@@ -49,11 +49,9 @@ services:
         max-file: "3"
     security_opt:
       - no-new-privileges:true
-    # Traefik labels for Coolify (Coolify may auto-add these)
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.serika.loadbalancer.server.port=3000"
-      # HTTP to HTTPS redirect handled by Coolify/Traefik globally
+    # NOTE: Do NOT add Traefik labels manually!
+    # Coolify automatically generates Traefik labels based on the domain
+    # you configure in the Coolify UI. Manual labels can cause conflicts.
 
 volumes:
   serika-downloads:
