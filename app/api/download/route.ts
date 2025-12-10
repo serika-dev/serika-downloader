@@ -242,12 +242,16 @@ function buildYtdlpArgs(options: any): string[] {
     return args;
   }
 
+  // Check if Bilibili - needs different settings
+  const isBilibili = isBilibiliUrl(options.url);
+
   // Performance optimizations (only for actual downloads)
-  args.push('--concurrent-fragments', '16');
+  // Bilibili needs lower concurrency to avoid rate limiting
+  args.push('--concurrent-fragments', isBilibili ? '4' : '16');
   args.push('--retries', '10');
   args.push('--fragment-retries', '10');
   args.push('--buffer-size', '16K');
-  args.push('--http-chunk-size', '10M');
+  args.push('--http-chunk-size', isBilibili ? '1M' : '10M');
   args.push('--throttled-rate', '100K');
 
   // Apply cookies if provided (takes priority over browser cookies)
@@ -256,24 +260,34 @@ function buildYtdlpArgs(options: any): string[] {
   }
 
   // Site-specific headers/workarounds
-  if (isBilibiliUrl(options.url)) {
-    // Bilibili requires cookies to avoid 412 errors
+  if (isBilibili) {
+    // Bilibili REQUIRES cookies with buvid3 to avoid 412 errors
     if (!options.cookiesPath) {
-      console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider uploading a cookies file.');
+      console.warn('[Bilibili] WARNING: Bilibili requires cookies (especially buvid3) to avoid 412 errors!');
     }
+    
+    // CRITICAL: Referer header is mandatory
     args.push('--referer', 'https://www.bilibili.com/');
     
-    const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    // Modern Chrome User-Agent
+    const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
     args.push('--user-agent', ua);
     
-    // Try without authentication first, may work for public videos
-    args.push('--no-check-certificates');
+    // Additional headers that help
+    args.push('--add-header', 'Origin:https://www.bilibili.com');
+    args.push('--add-header', 'Accept-Language:en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7');
+    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+    
+    // Add delay between requests to avoid rate limiting
+    args.push('--sleep-requests', '1');
+    
+    // Don't use external downloader for Bilibili - aria2c causes issues
+  } else {
+    // Use aria2c for faster downloads on other sites
+    args.push('--external-downloader', 'aria2c');
+    args.push('--external-downloader-args', 
+      'aria2c:-x 16 -s 16 -k 1M --max-connection-per-server=16 --min-split-size=1M');
   }
-
-  // Use aria2c for faster downloads if available
-  args.push('--external-downloader', 'aria2c');
-  args.push('--external-downloader-args', 
-    'aria2c:-x 16 -s 16 -k 1M --max-connection-per-server=16 --min-split-size=1M');
 
   // Format selection
   if (options.audioOnly) {

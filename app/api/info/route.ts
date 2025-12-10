@@ -76,17 +76,24 @@ function getVideoInfo(url: string, cookiesPath?: string): Promise<any> {
 
       // Site-specific headers/workarounds
       if (isBilibiliUrl(url)) {
-        // Bilibili requires cookies to avoid 412 errors
+        // Bilibili REQUIRES cookies with buvid3 to avoid 412 errors
         if (!cookiesPath) {
-          console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider uploading a cookies file.');
+          console.warn('[Bilibili] WARNING: Bilibili requires cookies to work!');
         }
+        
+        // CRITICAL: Referer header is mandatory
         args.push('--referer', 'https://www.bilibili.com/');
         
-        const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        // Modern Chrome User-Agent
+        const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
         args.push('--user-agent', ua);
         
-        // Try without authentication first, may work for public videos
-        args.push('--no-check-certificates');
+        // Additional headers
+        args.push('--add-header', 'Origin:https://www.bilibili.com');
+        args.push('--add-header', 'Accept-Language:en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7');
+        
+        // Add delay to avoid rate limiting
+        args.push('--sleep-requests', '1');
       }
 
       args.push(url);
