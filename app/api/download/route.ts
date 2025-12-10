@@ -260,27 +260,35 @@ function buildYtdlpArgs(options: any): string[] {
       }
     }
   } else if (options.videoOnly) {
-    args.push('-f', `bestvideo[height<=${options.quality}]`);
+    // Remove 'p' from quality (e.g., '1080p' -> '1080')
+    const qualityNum = options.quality?.replace('p', '') || '1080';
+    args.push('-f', `bestvideo[height<=${qualityNum}]/bestvideo/best`);
   } else {
     // Video + Audio
-    let formatString = 'bestvideo';
+    // Remove 'p' from quality (e.g., '1080p' -> '1080')
+    const qualityNum = options.quality?.replace('p', '') || '1080';
     
-    if (options.quality && options.quality !== 'best') {
-      formatString += `[height<=${options.quality}]`;
+    // Build format string with fallbacks for better compatibility
+    // Primary: specific codec + quality, Fallback: any codec at quality, Final: best available
+    let formatParts: string[] = [];
+    
+    // Try with specific codecs first if requested
+    if (options.videoCodec && options.audioCodec) {
+      formatParts.push(`bestvideo[height<=${qualityNum}][vcodec^=${options.videoCodec}]+bestaudio[acodec^=${options.audioCodec}]`);
     }
-    
     if (options.videoCodec) {
-      formatString += `[vcodec^=${options.videoCodec}]`;
+      formatParts.push(`bestvideo[height<=${qualityNum}][vcodec^=${options.videoCodec}]+bestaudio`);
     }
-    
-    formatString += '+bestaudio';
-    
     if (options.audioCodec) {
-      formatString += `[acodec^=${options.audioCodec}]`;
+      formatParts.push(`bestvideo[height<=${qualityNum}]+bestaudio[acodec^=${options.audioCodec}]`);
     }
     
-    formatString += '/best';
-    args.push('-f', formatString);
+    // Fallback without codec restrictions
+    formatParts.push(`bestvideo[height<=${qualityNum}]+bestaudio`);
+    formatParts.push('bestvideo+bestaudio');
+    formatParts.push('best');
+    
+    args.push('-f', formatParts.join('/'));
 
     // Merge to specified format
     args.push('--merge-output-format', 'mp4');
