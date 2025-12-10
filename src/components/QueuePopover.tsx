@@ -229,8 +229,12 @@ function QueueItem({
         <div className="flex items-center gap-1 flex-shrink-0">
           {isCompleted && (
             <button
-              onClick={() => downloadFile(download.id, download.filename || download.title)}
-              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-700/50 rounded-lg transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                downloadFile(download.id, download.filename || download.title);
+              }}
+              className="p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 rounded-lg transition-colors"
               title="Download"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -254,15 +258,23 @@ function QueueItem({
 }
 
 async function downloadFile(downloadId: string, filename: string) {
+  console.log('[downloadFile] Starting download:', { downloadId, filename });
+  
   try {
     const response = await fetch(`/api/file?id=${downloadId}`);
     
+    console.log('[downloadFile] Response status:', response.status);
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('[downloadFile] Error response:', errorData);
       throw new Error(errorData.error || 'Failed to download file');
     }
 
     const contentDisposition = response.headers.get('Content-Disposition');
+    const contentType = response.headers.get('Content-Type');
+    console.log('[downloadFile] Content-Type:', contentType, 'Disposition:', contentDisposition);
+    
     let actualFilename = filename || 'download';
     if (contentDisposition) {
       const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
@@ -272,6 +284,8 @@ async function downloadFile(downloadId: string, filename: string) {
     }
 
     const blob = await response.blob();
+    console.log('[downloadFile] Blob size:', blob.size);
+    
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -280,8 +294,10 @@ async function downloadFile(downloadId: string, filename: string) {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+    
+    console.log('[downloadFile] Download triggered successfully');
   } catch (error: any) {
-    console.error('Download error:', error);
+    console.error('[downloadFile] Download error:', error);
     alert(error.message || 'Failed to download file');
   }
 }
