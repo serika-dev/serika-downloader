@@ -240,12 +240,16 @@ function buildYtdlpArgs(options: any): string[] {
 
   // Site-specific headers/workarounds
   if (isBilibiliUrl(options.url)) {
-    // Bilibili often returns 412 without proper headers
+    // Bilibili requires cookies to avoid 412 errors
+    // In server environments, we'll skip this but inform the user
+    console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider using --cookies-from-browser or providing a cookies file.');
+    args.push('--referer', 'https://www.bilibili.com/');
+    
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     args.push('--user-agent', ua);
-    args.push('--add-header', 'Referer: https://www.bilibili.com');
-    args.push('--add-header', 'Origin: https://www.bilibili.com');
-    args.push('--add-header', 'Accept-Language: en-US,en;q=0.9');
+    
+    // Try without authentication first, may work for public videos
+    args.push('--no-check-certificates');
   }
 
   // Use aria2c for faster downloads if available
