@@ -4,6 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useDownloadStore } from '@/store/downloadStore';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Track which downloads are currently being fetched
+const downloadingFiles = new Set<string>();
+
 export function QueuePopover() {
   const [isOpen, setIsOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -157,9 +160,28 @@ function QueueItem({
   download: any; 
   onRemove: () => void;
 }) {
+  const [isDownloading, setIsDownloading] = useState(false);
   const isActive = download.status === 'downloading' || download.status === 'processing';
   const isCompleted = download.status === 'completed';
   const isError = download.status === 'error';
+
+  const handleDownloadClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // Prevent double-clicks
+    if (isDownloading || downloadingFiles.has(download.id)) return;
+    
+    setIsDownloading(true);
+    downloadingFiles.add(download.id);
+    
+    try {
+      await downloadFile(download.id, download.filename || download.title);
+    } finally {
+      setIsDownloading(false);
+      downloadingFiles.delete(download.id);
+    }
+  };
 
   return (
     <div className="px-4 py-3 hover:bg-zinc-800/30 transition-colors group">
@@ -229,17 +251,25 @@ function QueueItem({
         <div className="flex items-center gap-1 flex-shrink-0">
           {isCompleted && (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                downloadFile(download.id, download.filename || download.title);
-              }}
-              className="p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20 rounded-lg transition-colors"
-              title="Download"
+              onClick={handleDownloadClick}
+              disabled={isDownloading}
+              className={`p-2 rounded-lg transition-colors ${
+                isDownloading 
+                  ? 'text-zinc-500 cursor-not-allowed' 
+                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20'
+              }`}
+              title={isDownloading ? 'Downloading...' : 'Download'}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
+              {isDownloading ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
             </button>
           )}
           <button
