@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { DownloadForm } from '@/components/DownloadForm';
-import { DownloadQueue } from '@/components/DownloadQueue';
+import { QueuePopover } from '@/components/QueuePopover';
 import { BackgroundShapes } from '@/components/BackgroundShapes';
 import { useDownloadStore } from '@/store/downloadStore';
 import { DownloadOptions } from '@/types/download';
@@ -122,6 +122,11 @@ export default function Home() {
     <div className="relative min-h-screen bg-black overflow-x-hidden">
       <BackgroundShapes />
       
+      {/* Fixed Top Right Queue Icon */}
+      <div className="fixed top-4 right-4 z-50">
+        <QueuePopover />
+      </div>
+      
       <div className="relative z-10 flex min-h-screen flex-col items-center px-4 py-4 sm:px-6 lg:px-8">
         {/* Header */}
         <header className="w-full max-w-5xl mb-3 flex flex-col items-center text-center">
@@ -141,7 +146,6 @@ export default function Home() {
         {/* Main Content */}
         <main className="w-full max-w-5xl flex flex-col items-center gap-4">
           <DownloadForm onSubmit={handleDownload} loading={loading} />
-          <DownloadQueue />
         </main>
       </div>
     </div>
