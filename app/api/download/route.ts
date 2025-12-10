@@ -134,11 +134,18 @@ function buildYtdlpArgs(options: any): string[] {
     if (options.autoSubs !== false) {
       args.push('--write-auto-subs');
     }
-    args.push('--sub-langs', options.subtitleLangs || 'en,en.*,all');
+    // Handle subtitle language selection
+    // If user specified 'all', limit to common languages to avoid rate limiting
+    let subLangs = options.subtitleLangs || 'en';
+    if (subLangs === 'all') {
+      // Common languages instead of literally all to avoid 429 errors
+      subLangs = 'en,en-orig,en.*,es,es.*,fr,de,pt,pt-BR,ja,ko,zh-Hans,zh-Hant,ru,ar,hi,it,nl,pl,tr,vi,-live_chat';
+    }
+    args.push('--sub-langs', subLangs);
     if (options.subtitleFormat) {
       args.push('--convert-subs', options.subtitleFormat);
     }
-    // Don't fail if no subtitles found, just warn
+    // Don't fail if some subtitles fail to download
     args.push('--ignore-errors');
     args.push(options.url);
     return args;
@@ -222,12 +229,16 @@ function buildYtdlpArgs(options: any): string[] {
     args.push('--parse-metadata', 'description:(?s)(?P<meta_comment>.+)');
   }
 
-  // Subtitles
+  // Subtitles - limit to common languages to avoid rate limiting
   if (options.subtitles) {
     args.push('--write-subs');
     args.push('--write-auto-subs');
     args.push('--embed-subs');
-    args.push('--sub-langs', 'all');
+    // Only download English subtitles by default to avoid YouTube rate limiting
+    // Use 'en.*' to match en, en-US, en-GB, etc.
+    args.push('--sub-langs', 'en,en-orig,en.*,-live_chat');
+    // Don't fail the entire download if subtitles fail
+    args.push('--ignore-errors');
   }
 
   // SponsorBlock
