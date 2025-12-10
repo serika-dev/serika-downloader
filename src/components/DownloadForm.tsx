@@ -45,6 +45,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [audioCodec, setAudioCodec] = useState('aac');
   const [fps, setFps] = useState('source');
   const [customArgs, setCustomArgs] = useState('');
+  const [cookiesFile, setCookiesFile] = useState<File | null>(null);
   
   // Metadata
   const [downloadThumbnail, setDownloadThumbnail] = useState(true);
@@ -55,9 +56,19 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [splitChapters, setSplitChapters] = useState(false);
   const [sponsorBlock, setSponsorBlock] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim() || !urlValidation.isValid) return;
+
+    // Convert cookies file to base64 if provided
+    let cookiesData: string | undefined;
+    if (cookiesFile) {
+      const reader = new FileReader();
+      cookiesData = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(cookiesFile);
+      });
+    }
 
     const options: DownloadOptions = {
       url: url.trim(),
@@ -84,10 +95,12 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
       splitChapters,
       sponsorBlock,
       customArgs,
+      cookies: cookiesData,
     };
 
     onSubmit(options);
     setUrl('');
+    setCookiesFile(null); // Reset cookies file after submit
   };
 
   return (
@@ -166,12 +179,19 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="mt-2 text-sm"
+                className="mt-2 text-sm space-y-1"
               >
                 {urlValidation.isValid ? (
-                  <span className="text-green-400">
-                    ✓ {urlValidation.platform} URL detected
-                  </span>
+                  <>
+                    <span className="text-green-400 block">
+                      ✓ {urlValidation.platform} URL detected
+                    </span>
+                    {urlValidation.warning && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-xs">
+                        {urlValidation.warning}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <span className="text-red-400">
                     ✗ {urlValidation.error || 'URL not supported'}
@@ -483,6 +503,44 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                       </div>
                     </>
                   )}
+
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium text-zinc-400">Cookies File (Optional)</label>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept=".txt"
+                        onChange={(e) => setCookiesFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="cookies-upload"
+                      />
+                      <label
+                        htmlFor="cookies-upload"
+                        className="flex items-center justify-between w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-white cursor-pointer hover:border-zinc-600 transition-colors"
+                      >
+                        <span className={cookiesFile ? 'text-white' : 'text-zinc-500'}>
+                          {cookiesFile ? cookiesFile.name : 'Upload cookies.txt file'}
+                        </span>
+                        <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                      </label>
+                      {cookiesFile && (
+                        <button
+                          type="button"
+                          onClick={() => setCookiesFile(null)}
+                          className="absolute right-12 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-300"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      Required for some platforms like Bilibili. Export cookies from your browser using an extension like "Get cookies.txt".
+                    </p>
+                  </div>
 
                   <div className="space-y-3">
                     <label className="text-sm font-medium text-zinc-400">Custom Arguments</label>

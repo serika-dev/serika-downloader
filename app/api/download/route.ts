@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
       embedThumbnail = true,
       embedSubtitles = false,
       sponsorBlock = false,
+      // Cookies
+      cookies,
     } = body;
 
     if (!url) {
@@ -101,6 +103,14 @@ export async function POST(request: NextRequest) {
     const downloadId = uuidv4();
     const outputDir = path.join(os.tmpdir(), 'serika-downloads', downloadId);
     await fs.mkdir(outputDir, { recursive: true });
+
+    // Save cookies to temp file if provided
+    let cookiesPath: string | undefined;
+    if (cookies) {
+      cookiesPath = path.join(outputDir, 'cookies.txt');
+      await fs.writeFile(cookiesPath, cookies, 'utf-8');
+      console.log(`[${downloadId}] Cookies file saved for this request`);
+    }
 
     // Determine download mode for tracking
     const downloadMode = thumbnailOnly ? 'thumbnail' : 
@@ -155,6 +165,8 @@ export async function POST(request: NextRequest) {
       outputDir,
       // Spotify metadata for override
       spotifyMetadata,
+      // Cookies path
+      cookiesPath,
     });
 
     // Log the yt-dlp command for debugging
@@ -238,11 +250,17 @@ function buildYtdlpArgs(options: any): string[] {
   args.push('--http-chunk-size', '10M');
   args.push('--throttled-rate', '100K');
 
+  // Apply cookies if provided (takes priority over browser cookies)
+  if (options.cookiesPath) {
+    args.push('--cookies', options.cookiesPath);
+  }
+
   // Site-specific headers/workarounds
   if (isBilibiliUrl(options.url)) {
     // Bilibili requires cookies to avoid 412 errors
-    // In server environments, we'll skip this but inform the user
-    console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider using --cookies-from-browser or providing a cookies file.');
+    if (!options.cookiesPath) {
+      console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider uploading a cookies file.');
+    }
     args.push('--referer', 'https://www.bilibili.com/');
     
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';

@@ -1,5 +1,12 @@
 // Supported platforms and their URL patterns
-export const SUPPORTED_PLATFORMS = [
+type Platform = {
+  name: string;
+  patterns: RegExp[];
+  icon: string;
+  warning?: string;
+};
+
+export const SUPPORTED_PLATFORMS: Platform[] = [
   {
     name: 'YouTube',
     patterns: [
@@ -90,7 +97,8 @@ export const SUPPORTED_PLATFORMS = [
       /^(https?:\/\/)?(www\.)?bilibili\.com\/video\/[\w]+/,
       /^(https?:\/\/)?(www\.)?b23\.tv\/[\w]+/,
     ],
-    icon: '📺',
+    icon: '⚠️',
+    warning: '⚠️ Bilibili support is experimental. This platform requires authentication cookies and may be unreliable. Consider uploading a cookies file in the Advanced tab for better results.',
   },
   {
     name: 'Reddit',
@@ -127,6 +135,7 @@ export type UrlValidationResult = {
   platform?: string;
   icon?: string;
   error?: string;
+  warning?: string;
 };
 
 export function validateUrl(url: string): UrlValidationResult {
@@ -158,6 +167,7 @@ export function validateUrl(url: string): UrlValidationResult {
           isValid: true,
           platform: platform.name,
           icon: platform.icon,
+          warning: platform.warning,
         };
       }
     }
