@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DownloadOptions } from '@/types/download';
 import { 
@@ -11,6 +11,7 @@ import {
   CONTAINER_FORMATS,
   FPS_OPTIONS 
 } from '@/config/formats';
+import { validateUrl, UrlValidationResult } from '@/utils/urlValidation';
 
 interface DownloadFormProps {
   onSubmit: (options: DownloadOptions) => void;
@@ -22,6 +23,11 @@ type Tab = 'general' | 'advanced' | 'metadata';
 export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [url, setUrl] = useState('');
   const [mode, setMode] = useState<'video' | 'audio' | 'thumbnail' | 'subtitles'>('video');
+  
+  // URL validation
+  const urlValidation: UrlValidationResult = useMemo(() => {
+    return validateUrl(url);
+  }, [url]);
   const [activeTab, setActiveTab] = useState<Tab>('general');
   
   // General
@@ -51,7 +57,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
+    if (!url.trim() || !urlValidation.isValid) return;
 
     const options: DownloadOptions = {
       url: url.trim(),
@@ -89,15 +95,91 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* URL Input */}
         <div className="relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste video URL here..."
-            disabled={loading}
-            className="relative w-full px-8 py-5 bg-black border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-all text-lg shadow-2xl"
-          />
+          <div className={`absolute -inset-1 rounded-2xl blur transition duration-1000 group-hover:duration-200 ${
+            url && !urlValidation.isValid
+              ? 'bg-gradient-to-r from-red-600 to-red-500 opacity-50'
+              : url && urlValidation.isValid
+              ? 'bg-gradient-to-r from-green-600 to-emerald-500 opacity-50'
+              : 'bg-gradient-to-r from-purple-600 to-pink-600 opacity-25 group-hover:opacity-50'
+          }`} />
+          <div className="relative">
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Paste video URL here..."
+              disabled={loading}
+              className={`relative w-full px-8 py-5 pr-14 bg-black rounded-xl text-white placeholder-zinc-500 focus:outline-none transition-all text-lg shadow-2xl ${
+                url && !urlValidation.isValid
+                  ? 'border-2 border-red-500 focus:border-red-400 focus:ring-1 focus:ring-red-400'
+                  : url && urlValidation.isValid
+                  ? 'border-2 border-green-500 focus:border-green-400 focus:ring-1 focus:ring-green-400'
+                  : 'border border-zinc-800 focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600'
+              }`}
+            />
+            {/* Validation Icon */}
+            <AnimatePresence>
+              {url && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2"
+                >
+                  {urlValidation.isValid ? (
+                    <div className="flex items-center gap-2">
+                      {urlValidation.icon && (
+                        <span className="text-lg" title={urlValidation.platform}>
+                          {urlValidation.icon}
+                        </span>
+                      )}
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center"
+                      >
+                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </motion.div>
+                    </div>
+                  ) : (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center"
+                      title={urlValidation.error || 'Unsupported URL'}
+                    >
+                      <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          {/* Validation Message */}
+          <AnimatePresence>
+            {url && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mt-2 text-sm"
+              >
+                {urlValidation.isValid ? (
+                  <span className="text-green-400">
+                    ✓ {urlValidation.platform} URL detected
+                  </span>
+                ) : (
+                  <span className="text-red-400">
+                    ✗ {urlValidation.error || 'URL not supported'}
+                  </span>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Mode Selection */}
@@ -442,9 +524,9 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading || !url}
+          disabled={loading || !url || !urlValidation.isValid}
           className={`w-full py-4 rounded-xl font-bold text-lg transition-all transform active:scale-[0.98] ${
-            loading || !url
+            loading || !url || !urlValidation.isValid
               ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
               : 'bg-white text-black hover:bg-zinc-200 shadow-xl shadow-white/10'
           }`}

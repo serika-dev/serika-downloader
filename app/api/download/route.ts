@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
@@ -17,6 +17,50 @@ export const downloadProgress = new Map<string, {
   mode?: 'video' | 'audio' | 'thumbnail' | 'subtitles';
   error?: string;
 }>();
+
+// Spotify URL patterns
+const SPOTIFY_TRACK_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/track\/([a-zA-Z0-9]+)/;
+const SPOTIFY_ALBUM_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/album\/([a-zA-Z0-9]+)/;
+const SPOTIFY_PLAYLIST_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/playlist\/([a-zA-Z0-9]+)/;
+
+interface SpotifyTrackInfo {
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: number;
+  artwork?: string;
+  releaseDate?: string;
+  trackNumber?: number;
+}
+
+// Extract Spotify track info using yt-dlp's Spotify extractor (metadata only)
+async function getSpotifyTrackInfo(spotifyUrl: string): Promise<SpotifyTrackInfo | null> {
+  try {
+    const result = execSync(
+      `yt-dlp --dump-json --skip-download "${spotifyUrl}"`,
+      { encoding: 'utf-8', timeout: 30000 }
+    );
+    const info = JSON.parse(result);
+    return {
+      title: info.track || info.title,
+      artist: info.artist || info.uploader || info.creator,
+      album: info.album,
+      duration: info.duration,
+      artwork: info.thumbnail,
+      releaseDate: info.release_date || info.upload_date,
+      trackNumber: info.track_number,
+    };
+  } catch (error) {
+    console.error('Failed to get Spotify track info:', error);
+    return null;
+  }
+}
+
+// Build YouTube Music search URL from Spotify track info
+function buildYTMusicSearchUrl(trackInfo: SpotifyTrackInfo): string {
+  const searchQuery = `${trackInfo.artist} - ${trackInfo.title}`;
+  return `ytsearch1:${searchQuery}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,16 +104,36 @@ export async function POST(request: NextRequest) {
                          subtitlesOnly ? 'subtitles' : 
                          audioOnly ? 'audio' : 'video';
 
+    // Check if this is a Spotify URL - handle specially
+    const isSpotifyTrack = SPOTIFY_TRACK_REGEX.test(url);
+    let spotifyMetadata: SpotifyTrackInfo | null = null;
+    let actualUrl = url;
+
+    if (isSpotifyTrack) {
+      console.log(`[${downloadId}] Detected Spotify track URL, fetching metadata...`);
+      downloadProgress.set(downloadId, { progress: 0, mode: downloadMode, status: 'fetching metadata' });
+      
+      spotifyMetadata = await getSpotifyTrackInfo(url);
+      
+      if (spotifyMetadata) {
+        console.log(`[${downloadId}] Spotify track: ${spotifyMetadata.artist} - ${spotifyMetadata.title}`);
+        actualUrl = buildYTMusicSearchUrl(spotifyMetadata);
+        console.log(`[${downloadId}] Searching YouTube Music: ${actualUrl}`);
+      } else {
+        console.log(`[${downloadId}] Failed to get Spotify metadata, falling back to direct URL`);
+      }
+    }
+
     // Build yt-dlp arguments for maximum performance
     const args = buildYtdlpArgs({
-      url,
+      url: actualUrl,
       format,
       quality,
       audioFormat,
       videoCodec,
       audioCodec,
       downloadThumbnail,
-      audioOnly,
+      audioOnly: isSpotifyTrack ? true : audioOnly, // Spotify tracks are always audio-only
       videoOnly,
       // Mode-specific options
       thumbnailOnly,
@@ -86,6 +150,8 @@ export async function POST(request: NextRequest) {
       embedSubtitles,
       sponsorBlock,
       outputDir,
+      // Spotify metadata for override
+      spotifyMetadata,
     });
 
     // Log the yt-dlp command for debugging
@@ -94,7 +160,7 @@ export async function POST(request: NextRequest) {
 
     // Return download ID immediately and process in background
     // In production, use a job queue system
-    processDownload(downloadId, args, outputDir, downloadMode);
+    processDownload(downloadId, args, outputDir, downloadMode, spotifyMetadata);
 
     return NextResponse.json({ 
       downloadId, 
@@ -113,8 +179,14 @@ export async function POST(request: NextRequest) {
 function buildYtdlpArgs(options: any): string[] {
   const args: string[] = [];
 
-  // Output template
-  args.push('-o', path.join(options.outputDir, '%(title)s.%(ext)s'));
+  // Output template - use Spotify metadata for filename if available
+  if (options.spotifyMetadata) {
+    const safeTitle = options.spotifyMetadata.title.replace(/[<>:"/\\|?*]/g, '_');
+    const safeArtist = options.spotifyMetadata.artist.replace(/[<>:"/\\|?*]/g, '_');
+    args.push('-o', path.join(options.outputDir, `${safeArtist} - ${safeTitle}.%(ext)s`));
+  } else {
+    args.push('-o', path.join(options.outputDir, '%(title)s.%(ext)s'));
+  }
 
   // Thumbnail-only mode - handle early and return
   if (options.thumbnailOnly) {
@@ -229,6 +301,23 @@ function buildYtdlpArgs(options: any): string[] {
     args.push('--parse-metadata', 'description:(?s)(?P<meta_comment>.+)');
   }
 
+  // Spotify metadata overrides - apply Spotify metadata to the downloaded file
+  if (options.spotifyMetadata) {
+    const meta = options.spotifyMetadata;
+    // Override metadata with Spotify track info
+    args.push('--parse-metadata', `:(?P<meta_title>${meta.title.replace(/"/g, '\\"')})`);
+    args.push('--parse-metadata', `:(?P<meta_artist>${meta.artist.replace(/"/g, '\\"')})`);
+    if (meta.album) {
+      args.push('--parse-metadata', `:(?P<meta_album>${meta.album.replace(/"/g, '\\"')})`);
+    }
+    if (meta.trackNumber) {
+      args.push('--parse-metadata', `:(?P<meta_track>${meta.trackNumber})`);
+    }
+    if (meta.releaseDate) {
+      args.push('--parse-metadata', `:(?P<meta_date>${meta.releaseDate})`);
+    }
+  }
+
   // Subtitles - limit to common languages to avoid rate limiting
   if (options.subtitles) {
     args.push('--write-subs');
@@ -255,7 +344,63 @@ function buildYtdlpArgs(options: any): string[] {
   return args;
 }
 
-function processDownload(downloadId: string, args: string[], outputDir: string, mode: 'video' | 'audio' | 'thumbnail' | 'subtitles') {
+// Download Spotify artwork and embed it into the audio file
+async function embedSpotifyArtwork(outputDir: string, spotifyMetadata: SpotifyTrackInfo): Promise<void> {
+  if (!spotifyMetadata.artwork) return;
+  
+  try {
+    // Find the downloaded audio file
+    const files = await fs.readdir(outputDir);
+    const audioFile = files.find(f => 
+      f.endsWith('.mp3') || f.endsWith('.m4a') || f.endsWith('.opus') || 
+      f.endsWith('.flac') || f.endsWith('.ogg') || f.endsWith('.wav')
+    );
+    
+    if (!audioFile) return;
+    
+    const audioPath = path.join(outputDir, audioFile);
+    const artworkPath = path.join(outputDir, 'spotify_artwork.jpg');
+    
+    // Download the artwork
+    const response = await fetch(spotifyMetadata.artwork);
+    if (response.ok) {
+      const buffer = await response.arrayBuffer();
+      await fs.writeFile(artworkPath, Buffer.from(buffer));
+      
+      // Use ffmpeg to embed the artwork
+      const tempPath = path.join(outputDir, `temp_${audioFile}`);
+      
+      try {
+        execSync(
+          `ffmpeg -i "${audioPath}" -i "${artworkPath}" -map 0:a -map 1:0 -c copy -disposition:1 attached_pic "${tempPath}" -y`,
+          { stdio: 'pipe', timeout: 60000 }
+        );
+        
+        // Replace original with the one containing artwork
+        await fs.unlink(audioPath);
+        await fs.rename(tempPath, audioPath);
+        await fs.unlink(artworkPath).catch(() => {});
+        
+        console.log(`[Spotify] Embedded artwork into ${audioFile}`);
+      } catch (ffmpegError) {
+        console.error('[Spotify] Failed to embed artwork:', ffmpegError);
+        // Clean up temp files
+        await fs.unlink(tempPath).catch(() => {});
+        await fs.unlink(artworkPath).catch(() => {});
+      }
+    }
+  } catch (error) {
+    console.error('[Spotify] Failed to download/embed artwork:', error);
+  }
+}
+
+function processDownload(
+  downloadId: string, 
+  args: string[], 
+  outputDir: string, 
+  mode: 'video' | 'audio' | 'thumbnail' | 'subtitles',
+  spotifyMetadata?: SpotifyTrackInfo | null
+) {
   const ytdlp = spawn('yt-dlp', args);
   let fullOutput = '';
 
@@ -413,6 +558,17 @@ function processDownload(downloadId: string, args: string[], outputDir: string, 
       
       // Wait a moment for filesystem to finish writing
       await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // If this was a Spotify download, embed the artwork
+      if (spotifyMetadata) {
+        console.log(`[${downloadId}] Embedding Spotify artwork...`);
+        const currentData = downloadProgress.get(downloadId) || { progress: 98, mode };
+        currentData.progress = 98;
+        currentData.status = 'processing';
+        downloadProgress.set(downloadId, currentData);
+        
+        await embedSpotifyArtwork(outputDir, spotifyMetadata);
+      }
       
       // Mark as completed
       const currentData = downloadProgress.get(downloadId) || { progress: 100, mode };
