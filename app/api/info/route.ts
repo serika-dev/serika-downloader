@@ -5,6 +5,13 @@ import fs from 'fs/promises';
 
 export const maxDuration = 300; // 5 minutes timeout for serverless
 
+// Bilibili URL patterns (need custom headers to avoid 412)
+const BILIBILI_REGEX = /^(https?:\/\/)?(www\.)?(bilibili\.com|b23\.tv)\//;
+
+function isBilibiliUrl(url: string): boolean {
+  return BILIBILI_REGEX.test(url);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -35,8 +42,19 @@ function getVideoInfo(url: string): Promise<any> {
         '--dump-json',
         '--no-playlist',
         '--skip-download',
-        url,
       ];
+
+      // Site-specific headers/workarounds
+      if (isBilibiliUrl(url)) {
+        // Bilibili often returns 412 without proper headers
+        const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        args.push('--user-agent', ua);
+        args.push('--add-header', 'Referer: https://www.bilibili.com');
+        args.push('--add-header', 'Origin: https://www.bilibili.com');
+        args.push('--add-header', 'Accept-Language: en-US,en;q=0.9');
+      }
+
+      args.push(url);
 
       const ytdlp = spawn('yt-dlp', args);
       let stdout = '';
