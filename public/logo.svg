@@ -1,0 +1,8 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="650" height="80" viewBox="0 0 650 80">
+  <text x="0" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="900" letter-spacing="-1">
+    <tspan fill="#ffffff">Serika</tspan><tspan fill="#8b5cf6">Downloader</tspan>
+  </text>
+</svg>

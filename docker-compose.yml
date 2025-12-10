@@ -1,0 +1,65 @@
+# Serika Downloader - Docker Compose Configuration
+# Usage: docker-compose up -d
+# Stop:  docker-compose down
+# Logs:  docker-compose logs -f
+
+version: '3.8'
+
+services:
+  serika-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: serika-downloader:latest
+    container_name: serika-downloader
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount downloads directory to persist/access files
+      - ./downloads:/app/downloads
+      # Optional: Mount tmp for faster downloads (uses host tmp)
+      # - /tmp/serika-downloads:/tmp/serika-downloads
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Download settings
+      - MAX_CONCURRENT_DOWNLOADS=5
+      - FILE_RETENTION_MS=3600000
+      # Performance tuning
+      - YTDLP_CONCURRENT_FRAGMENTS=16
+      # Timezone (optional)
+      - TZ=UTC
+    restart: unless-stopped
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Pull policy
+    pull_policy: missing
+
+# Optional: Network configuration for multi-container setups
+networks:
+  default:
+    name: serika-network
+    driver: bridge

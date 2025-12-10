@@ -1,0 +1,454 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { spawn } from 'child_process';
+import path from 'path';
+import os from 'os';
+import fs from 'fs/promises';
+import { v4 as uuidv4 } from 'uuid';
+
+export const maxDuration = 3600; // 1 hour timeout
+
+// Store download progress in memory (use Redis in production)
+export const downloadProgress = new Map<string, { 
+  progress: number; 
+  status?: string; 
+  speed?: string; 
+  eta?: string; 
+  filename?: string;
+  mode?: 'video' | 'audio' | 'thumbnail' | 'subtitles';
+  error?: string;
+}>();
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const {
+      url,
+      format = 'bestvideo+bestaudio',
+      quality = 'best',
+      audioFormat,
+      videoCodec,
+      audioCodec,
+      downloadThumbnail = false,
+      audioOnly = false,
+      videoOnly = false,
+      // Mode-specific options
+      thumbnailOnly = false,
+      thumbnailFormat,
+      thumbnailQuality,
+      subtitlesOnly = false,
+      subtitleFormat,
+      subtitleLangs,
+      autoSubs = true,
+      // Embed/metadata options
+      subtitles = false,
+      embedMetadata = true,
+      embedThumbnail = true,
+      embedSubtitles = false,
+      sponsorBlock = false,
+    } = body;
+
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    const downloadId = uuidv4();
+    const outputDir = path.join(os.tmpdir(), 'serika-downloads', downloadId);
+    await fs.mkdir(outputDir, { recursive: true });
+
+    // Determine download mode for tracking
+    const downloadMode = thumbnailOnly ? 'thumbnail' : 
+                         subtitlesOnly ? 'subtitles' : 
+                         audioOnly ? 'audio' : 'video';
+
+    // Build yt-dlp arguments for maximum performance
+    const args = buildYtdlpArgs({
+      url,
+      format,
+      quality,
+      audioFormat,
+      videoCodec,
+      audioCodec,
+      downloadThumbnail,
+      audioOnly,
+      videoOnly,
+      // Mode-specific options
+      thumbnailOnly,
+      thumbnailFormat,
+      thumbnailQuality,
+      subtitlesOnly,
+      subtitleFormat,
+      subtitleLangs,
+      autoSubs,
+      // Embed/metadata options
+      subtitles,
+      embedMetadata,
+      embedThumbnail,
+      embedSubtitles,
+      sponsorBlock,
+      outputDir,
+    });
+
+    // Log the yt-dlp command for debugging
+    console.log(`[${downloadId}] Mode: ${downloadMode}`);
+    console.log(`[${downloadId}] yt-dlp args:`, args.join(' '));
+
+    // Return download ID immediately and process in background
+    // In production, use a job queue system
+    processDownload(downloadId, args, outputDir, downloadMode);
+
+    return NextResponse.json({ 
+      downloadId, 
+      status: 'started',
+      message: 'Download started successfully'
+    });
+  } catch (error: any) {
+    console.error('Error starting download:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to start download' },
+      { status: 500 }
+    );
+  }
+}
+
+function buildYtdlpArgs(options: any): string[] {
+  const args: string[] = [];
+
+  // Output template
+  args.push('-o', path.join(options.outputDir, '%(title)s.%(ext)s'));
+
+  // Thumbnail-only mode - handle early and return
+  if (options.thumbnailOnly) {
+    args.push('--skip-download');
+    args.push('--write-thumbnail');
+    if (options.thumbnailFormat) {
+      args.push('--convert-thumbnails', options.thumbnailFormat);
+    }
+    args.push(options.url);
+    return args;
+  }
+
+  // Subtitle-only mode - handle early and return
+  if (options.subtitlesOnly) {
+    args.push('--skip-download');
+    args.push('--write-subs');
+    if (options.autoSubs !== false) {
+      args.push('--write-auto-subs');
+    }
+    args.push('--sub-langs', options.subtitleLangs || 'en,en.*,all');
+    if (options.subtitleFormat) {
+      args.push('--convert-subs', options.subtitleFormat);
+    }
+    // Don't fail if no subtitles found, just warn
+    args.push('--ignore-errors');
+    args.push(options.url);
+    return args;
+  }
+
+  // Performance optimizations (only for actual downloads)
+  args.push('--concurrent-fragments', '16');
+  args.push('--retries', '10');
+  args.push('--fragment-retries', '10');
+  args.push('--buffer-size', '16K');
+  args.push('--http-chunk-size', '10M');
+  args.push('--throttled-rate', '100K');
+  
+  // Use aria2c for faster downloads if available
+  args.push('--external-downloader', 'aria2c');
+  args.push('--external-downloader-args', 
+    'aria2c:-x 16 -s 16 -k 1M --max-connection-per-server=16 --min-split-size=1M');
+
+  // Format selection
+  if (options.audioOnly) {
+    if (options.audioFormat === 'flac' || options.audioFormat === 'wav' || options.audioFormat === 'alac') {
+      args.push('-f', 'bestaudio');
+      args.push('--extract-audio');
+      args.push('--audio-format', options.audioFormat === 'alac' ? 'm4a' : options.audioFormat);
+      if (options.audioFormat !== 'wav') {
+        args.push('--audio-quality', '0'); // Best quality
+      }
+      args.push('--postprocessor-args', 'ffmpeg:-c:a flac -compression_level 12');
+    } else if (options.audioFormat?.startsWith('mp3')) {
+      const bitrate = options.audioFormat.split('-')[1] || '320';
+      args.push('-f', 'bestaudio');
+      args.push('--extract-audio');
+      args.push('--audio-format', 'mp3');
+      args.push('--audio-quality', bitrate + 'K');
+    } else {
+      args.push('-f', 'bestaudio');
+      args.push('--extract-audio');
+      if (options.audioFormat) {
+        args.push('--audio-format', options.audioFormat);
+      }
+    }
+  } else if (options.videoOnly) {
+    args.push('-f', `bestvideo[height<=${options.quality}]`);
+  } else {
+    // Video + Audio
+    let formatString = 'bestvideo';
+    
+    if (options.quality && options.quality !== 'best') {
+      formatString += `[height<=${options.quality}]`;
+    }
+    
+    if (options.videoCodec) {
+      formatString += `[vcodec^=${options.videoCodec}]`;
+    }
+    
+    formatString += '+bestaudio';
+    
+    if (options.audioCodec) {
+      formatString += `[acodec^=${options.audioCodec}]`;
+    }
+    
+    formatString += '/best';
+    args.push('-f', formatString);
+
+    // Merge to specified format
+    args.push('--merge-output-format', 'mp4');
+  }
+
+  // Thumbnail options (for video/audio downloads)
+  if (options.downloadThumbnail) {
+    args.push('--write-thumbnail');
+  }
+  
+  if (options.embedThumbnail && !options.audioOnly && !options.thumbnailOnly) {
+    args.push('--embed-thumbnail');
+  }
+
+  // Metadata
+  if (options.embedMetadata) {
+    args.push('--embed-metadata');
+    args.push('--parse-metadata', 'description:(?s)(?P<meta_comment>.+)');
+  }
+
+  // Subtitles
+  if (options.subtitles) {
+    args.push('--write-subs');
+    args.push('--write-auto-subs');
+    args.push('--embed-subs');
+    args.push('--sub-langs', 'all');
+  }
+
+  // SponsorBlock
+  if (options.sponsorBlock) {
+    args.push('--sponsorblock-remove', 'all');
+  }
+
+  // FFmpeg optimizations for CPU-only transcoding
+  args.push('--postprocessor-args',
+    'ffmpeg:-threads 0 -preset ultrafast -tune fastdecode -movflags +faststart');
+
+  args.push(options.url);
+
+  return args;
+}
+
+function processDownload(downloadId: string, args: string[], outputDir: string, mode: 'video' | 'audio' | 'thumbnail' | 'subtitles') {
+  const ytdlp = spawn('yt-dlp', args);
+  let fullOutput = '';
+
+  // Initialize progress tracking with mode
+  downloadProgress.set(downloadId, { progress: 0, mode, status: 'downloading' });
+
+  ytdlp.stdout.on('data', (data) => {
+    const output = data.toString();
+    fullOutput += output;
+    console.log(`[${downloadId}]`, output);
+
+    const currentData = downloadProgress.get(downloadId) || { progress: 0, mode };
+
+    // Parse yt-dlp progress output - multiple formats
+    
+    // Format 1: [download]  45.2% of ~123.45MiB at 5.67MiB/s ETA 00:30
+    const percentMatch = output.match(/\[download\]\s+([\d.]+)%\s+of\s+~?([\d.]+[KMG]iB)(?:.*?at\s+([\d.]+\s*[KMG]iB\/s))?(?:.*?ETA\s+(\d+:\d+))?/);
+    if (percentMatch) {
+      const progress = parseFloat(percentMatch[1]);
+      currentData.progress = Math.min(progress, 95); // Cap at 95% until fully complete
+      if (percentMatch[3]) currentData.speed = percentMatch[3].replace(/\s+/g, '');
+      if (percentMatch[4]) currentData.eta = percentMatch[4];
+      currentData.status = 'downloading';
+      downloadProgress.set(downloadId, currentData);
+    }
+    
+    // Format 2: [download]   24.34MiB at    1.05MiB/s (00:00:28) (frag 66)
+    // Fragment-based download (no percentage, estimate from time remaining)
+    const fragMatch = output.match(/\[download\]\s+([\d.]+)([KMG]iB)\s+at\s+([\d.]+\s*[KMG]iB\/s)\s+\((\d+:\d+:\d+|\d+:\d+)\)(?:\s+\(frag\s+(\d+)(?:\/(\d+))?\))?/);
+    if (fragMatch && !percentMatch) {
+      const speed = fragMatch[3].replace(/\s+/g, '');
+      const timeRemaining = fragMatch[4];
+      const currentFrag = fragMatch[5] ? parseInt(fragMatch[5]) : null;
+      const totalFrag = fragMatch[6] ? parseInt(fragMatch[6]) : null;
+      
+      currentData.speed = speed;
+      currentData.eta = timeRemaining;
+      currentData.status = 'downloading';
+      
+      // If we have fragment info, estimate progress
+      if (currentFrag && totalFrag) {
+        currentData.progress = Math.min(Math.round((currentFrag / totalFrag) * 95), 95);
+      } else if (currentFrag) {
+        // Without total, just show we're making progress (keep incrementing slightly)
+        currentData.progress = Math.min(Math.max(currentData.progress, 10) + 0.1, 90);
+      }
+      
+      downloadProgress.set(downloadId, currentData);
+    }
+    
+    // Format 3: [download] 100% of    7.60MiB in 00:00:30 at 255.22KiB/s
+    const completeMatch = output.match(/\[download\]\s+100%\s+of\s+([\d.]+[KMG]iB)\s+in\s+(\d+:\d+:\d+|\d+:\d+)\s+at\s+([\d.]+\s*[KMG]iB\/s)/);
+    if (completeMatch) {
+      currentData.progress = 96; // Download done, post-processing may follow
+      currentData.speed = completeMatch[3].replace(/\s+/g, '');
+      currentData.eta = undefined;
+      currentData.status = 'processing';
+      downloadProgress.set(downloadId, currentData);
+    }
+
+    // Detect post-processing phases
+    if (output.includes('[Merger]') || output.includes('[ffmpeg]') || output.includes('[ExtractAudio]')) {
+      currentData.progress = Math.max(currentData.progress, 96);
+      currentData.status = 'processing';
+      currentData.speed = undefined;
+      currentData.eta = undefined;
+      downloadProgress.set(downloadId, currentData);
+    }
+    
+    // Detect embedding operations
+    if (output.includes('[EmbedThumbnail]') || output.includes('[Metadata]') || output.includes('[EmbedSubtitle]')) {
+      currentData.progress = Math.max(currentData.progress, 98);
+      currentData.status = 'processing';
+      downloadProgress.set(downloadId, currentData);
+    }
+
+    // Detect thumbnail/subtitle writing
+    if (output.includes('[info] Writing video thumbnail') || output.includes('Writing thumbnail')) {
+      if (mode === 'thumbnail') {
+        currentData.progress = 90;
+        currentData.status = 'downloading';
+      }
+      downloadProgress.set(downloadId, currentData);
+    }
+
+    if (output.includes('[info] Writing video subtitles') || output.includes('Writing video description') || output.includes('[info] Writing')) {
+      if (mode === 'subtitles') {
+        currentData.progress = 90;
+        currentData.status = 'downloading';
+      }
+      downloadProgress.set(downloadId, currentData);
+    }
+
+    // Parse destination filename from output
+    // Format: [download] Destination: /path/to/file.mp4
+    const destMatch = output.match(/\[download\] Destination:\s*(.+)$/m);
+    if (destMatch) {
+      currentData.filename = path.basename(destMatch[1].trim());
+      downloadProgress.set(downloadId, currentData);
+    }
+
+    // Also try: [Merger] Merging formats into "/path/to/file.mp4"
+    const mergerMatch = output.match(/\[Merger\] Merging formats into "(.+)"/);
+    if (mergerMatch) {
+      currentData.filename = path.basename(mergerMatch[1]);
+      downloadProgress.set(downloadId, currentData);
+    }
+    
+    // Extract audio destination
+    const extractAudioMatch = output.match(/\[ExtractAudio\] Destination:\s*(.+)$/m);
+    if (extractAudioMatch) {
+      currentData.filename = path.basename(extractAudioMatch[1].trim());
+      downloadProgress.set(downloadId, currentData);
+    }
+  });
+
+  ytdlp.stderr.on('data', (data) => {
+    const output = data.toString();
+    console.error(`[${downloadId}]`, output);
+
+    const currentData = downloadProgress.get(downloadId) || { progress: 0, mode };
+
+    // Also try to parse progress from stderr (some formats output there)
+    // Same formats as stdout
+    const percentMatch = output.match(/\[download\]\s+([\d.]+)%\s+of\s+~?([\d.]+[KMG]iB)(?:.*?at\s+([\d.]+\s*[KMG]iB\/s))?/);
+    if (percentMatch) {
+      const progress = parseFloat(percentMatch[1]);
+      currentData.progress = Math.min(progress, 95);
+      if (percentMatch[3]) currentData.speed = percentMatch[3].replace(/\s+/g, '');
+      currentData.status = 'downloading';
+      downloadProgress.set(downloadId, currentData);
+    }
+    
+    // Fragment format in stderr
+    const fragMatch = output.match(/\[download\]\s+([\d.]+)([KMG]iB)\s+at\s+([\d.]+\s*[KMG]iB\/s)\s+\((\d+:\d+:\d+|\d+:\d+)\)/);
+    if (fragMatch && !percentMatch) {
+      currentData.speed = fragMatch[3].replace(/\s+/g, '');
+      currentData.eta = fragMatch[4];
+      currentData.status = 'downloading';
+      downloadProgress.set(downloadId, currentData);
+    }
+    
+    // Detect errors
+    if (output.includes('ERROR:') || output.includes('error:')) {
+      const errorMatch = output.match(/(?:ERROR:|error:)\s*(.+)/);
+      if (errorMatch) {
+        currentData.error = errorMatch[1].substring(0, 200); // Truncate long errors
+      }
+    }
+  });
+
+  ytdlp.on('close', async (code) => {
+    if (code === 0) {
+      console.log(`[${downloadId}] Download completed`);
+      
+      // Wait a moment for filesystem to finish writing
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Mark as completed
+      const currentData = downloadProgress.get(downloadId) || { progress: 100, mode };
+      currentData.progress = 100;
+      currentData.status = 'completed';
+      currentData.speed = undefined;
+      currentData.eta = undefined;
+      downloadProgress.set(downloadId, currentData);
+
+      // Clean up after 1 hour
+      setTimeout(async () => {
+        try {
+          await fs.rm(outputDir, { recursive: true, force: true });
+          downloadProgress.delete(downloadId);
+        } catch (error) {
+          console.error('Failed to clean up:', error);
+        }
+      }, 3600000); // 1 hour
+    } else {
+      console.error(`[${downloadId}] Download failed with code ${code}`);
+      console.error(`[${downloadId}] Full output:`, fullOutput);
+      
+      // Store error state instead of deleting
+      const currentData = downloadProgress.get(downloadId) || { progress: 0, mode };
+      currentData.status = 'error';
+      currentData.error = `Download failed with exit code ${code}`;
+      downloadProgress.set(downloadId, currentData);
+      
+      // Clean up failed downloads after 10 minutes
+      setTimeout(async () => {
+        try {
+          await fs.rm(outputDir, { recursive: true, force: true });
+          downloadProgress.delete(downloadId);
+        } catch (error) {
+          console.error('Failed to clean up:', error);
+        }
+      }, 600000); // 10 minutes
+    }
+  });
+
+  ytdlp.on('error', (error) => {
+    console.error(`[${downloadId}] Process error:`, error);
+    
+    // Store error state instead of deleting
+    const currentData = downloadProgress.get(downloadId) || { progress: 0, mode };
+    currentData.status = 'error';
+    currentData.error = error.message || 'Process failed to start';
+    downloadProgress.set(downloadId, currentData);
+  });
+}
