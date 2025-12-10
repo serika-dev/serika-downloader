@@ -23,6 +23,9 @@ const SPOTIFY_TRACK_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/track\/([a-zA
 const SPOTIFY_ALBUM_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/album\/([a-zA-Z0-9]+)/;
 const SPOTIFY_PLAYLIST_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/playlist\/([a-zA-Z0-9]+)/;
 
+// Bilibili URL patterns (need custom headers to avoid 412)
+const BILIBILI_REGEX = /^(https?:\/\/)?(www\.)?(bilibili\.com|b23\.tv)\//;
+
 interface SpotifyTrackInfo {
   title: string;
   artist: string;
@@ -176,6 +179,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function isBilibiliUrl(url: string): boolean {
+  return BILIBILI_REGEX.test(url);
+}
+
 function buildYtdlpArgs(options: any): string[] {
   const args: string[] = [];
 
@@ -230,7 +237,17 @@ function buildYtdlpArgs(options: any): string[] {
   args.push('--buffer-size', '16K');
   args.push('--http-chunk-size', '10M');
   args.push('--throttled-rate', '100K');
-  
+
+  // Site-specific headers/workarounds
+  if (isBilibiliUrl(options.url)) {
+    // Bilibili often returns 412 without proper headers
+    const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    args.push('--user-agent', ua);
+    args.push('--add-header', 'Referer: https://www.bilibili.com');
+    args.push('--add-header', 'Origin: https://www.bilibili.com');
+    args.push('--add-header', 'Accept-Language: en-US,en;q=0.9');
+  }
+
   // Use aria2c for faster downloads if available
   args.push('--external-downloader', 'aria2c');
   args.push('--external-downloader-args', 
