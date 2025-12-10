@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
+import os from 'os';
+import { v4 as uuidv4 } from 'uuid';
 
 export const maxDuration = 300; // 5 minutes timeout for serverless
 
@@ -13,20 +15,43 @@ function isBilibiliUrl(url: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  let tempDir: string | null = null;
+  
   try {
     const body = await request.json();
-    const { url } = body;
+    const { url, cookies } = body;
 
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
+    // Save cookies to temp file if provided
+    let cookiesPath: string | undefined;
+    if (cookies) {
+      tempDir = path.join(os.tmpdir(), 'serika-info', uuidv4());
+      await fs.mkdir(tempDir, { recursive: true });
+      cookiesPath = path.join(tempDir, 'cookies.txt');
+      await fs.writeFile(cookiesPath, cookies, 'utf-8');
+      console.log('[Info] Cookies file saved for this request');
+    }
+
     // Get video information using yt-dlp
-    const info = await getVideoInfo(url);
+    const info = await getVideoInfo(url, cookiesPath);
+    
+    // Cleanup temp dir
+    if (tempDir) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
 
     return NextResponse.json(info);
   } catch (error: any) {
     console.error('Error fetching video info:', error);
+    
+    // Cleanup temp dir on error
+    if (tempDir) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Failed to fetch video information' },
       { status: 500 }
@@ -34,7 +59,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getVideoInfo(url: string): Promise<any> {
+function getVideoInfo(url: string, cookiesPath?: string): Promise<any> {
   return new Promise((resolve, reject) => {
     // Try local yt-dlp first
     const tryLocalYtdlp = () => {
@@ -44,11 +69,17 @@ function getVideoInfo(url: string): Promise<any> {
         '--skip-download',
       ];
 
+      // Apply cookies if provided
+      if (cookiesPath) {
+        args.push('--cookies', cookiesPath);
+      }
+
       // Site-specific headers/workarounds
       if (isBilibiliUrl(url)) {
         // Bilibili requires cookies to avoid 412 errors
-        // In server environments, we'll skip this but inform the user
-        console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider using --cookies-from-browser or providing a cookies file.');
+        if (!cookiesPath) {
+          console.warn('[Bilibili] Note: Bilibili may require cookies to work. Consider uploading a cookies file.');
+        }
         args.push('--referer', 'https://www.bilibili.com/');
         
         const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
