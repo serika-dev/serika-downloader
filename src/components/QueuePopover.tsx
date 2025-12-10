@@ -161,6 +161,7 @@ function QueueItem({
   onRemove: () => void;
 }) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const isActive = download.status === 'downloading' || download.status === 'processing';
   const isCompleted = download.status === 'completed';
   const isError = download.status === 'error';
@@ -173,12 +174,18 @@ function QueueItem({
     if (isDownloading || downloadingFiles.has(download.id)) return;
     
     setIsDownloading(true);
+    setDownloadProgress(0);
     downloadingFiles.add(download.id);
     
     try {
-      await downloadFile(download.id, download.filename || download.title);
+      await downloadFileWithProgress(
+        download.id, 
+        download.filename || download.title,
+        (progress) => setDownloadProgress(progress)
+      );
     } finally {
       setIsDownloading(false);
+      setDownloadProgress(0);
       downloadingFiles.delete(download.id);
     }
   };
@@ -253,20 +260,46 @@ function QueueItem({
             <button
               onClick={handleDownloadClick}
               disabled={isDownloading}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`relative p-2 rounded-lg transition-colors ${
                 isDownloading 
-                  ? 'text-zinc-500 cursor-not-allowed' 
+                  ? 'cursor-not-allowed' 
                   : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20'
               }`}
-              title={isDownloading ? 'Downloading...' : 'Download'}
+              title={isDownloading ? `Downloading ${downloadProgress}%` : 'Download'}
             >
               {isDownloading ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
+                <div className="relative w-5 h-5">
+                  {/* Background circle */}
+                  <svg className="w-5 h-5 -rotate-90" viewBox="0 0 24 24">
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      className="text-zinc-700"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      className="text-emerald-400 transition-all duration-300"
+                      strokeDasharray={`${2 * Math.PI * 10}`}
+                      strokeDashoffset={`${2 * Math.PI * 10 * (1 - downloadProgress / 100)}`}
+                    />
+                  </svg>
+                  {/* Percentage text */}
+                  <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-emerald-400">
+                    {downloadProgress > 0 ? downloadProgress : ''}
+                  </span>
+                </div>
               ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
               )}
@@ -287,7 +320,11 @@ function QueueItem({
   );
 }
 
-async function downloadFile(downloadId: string, filename: string) {
+async function downloadFileWithProgress(
+  downloadId: string, 
+  filename: string,
+  onProgress: (progress: number) => void
+) {
   console.log('[downloadFile] Starting download:', { downloadId, filename });
   
   try {
@@ -302,8 +339,8 @@ async function downloadFile(downloadId: string, filename: string) {
     }
 
     const contentDisposition = response.headers.get('Content-Disposition');
-    const contentType = response.headers.get('Content-Type');
-    console.log('[downloadFile] Content-Type:', contentType, 'Disposition:', contentDisposition);
+    const contentLength = response.headers.get('Content-Length');
+    const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
     
     let actualFilename = filename || 'download';
     if (contentDisposition) {
@@ -313,8 +350,38 @@ async function downloadFile(downloadId: string, filename: string) {
       }
     }
 
-    const blob = await response.blob();
+    // Stream the response to track progress
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Unable to read response body');
+    }
+
+    const chunks: BlobPart[] = [];
+    let receivedLength = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+      
+      chunks.push(value);
+      receivedLength += value.length;
+      
+      // Calculate and report progress
+      if (totalSize > 0) {
+        const progress = Math.round((receivedLength / totalSize) * 100);
+        onProgress(progress);
+      } else {
+        // If no content-length, show indeterminate progress
+        onProgress(Math.min(99, Math.round(receivedLength / 1024 / 1024))); // MB as fake %
+      }
+    }
+
+    // Combine chunks into a single blob
+    const blob = new Blob(chunks);
     console.log('[downloadFile] Blob size:', blob.size);
+    
+    onProgress(100);
     
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
