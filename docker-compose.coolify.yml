@@ -1,7 +1,11 @@
-# Serika Downloader - Docker Compose Configuration
-# Usage: docker-compose up -d
-# Stop:  docker-compose down
-# Logs:  docker-compose logs -f
+# Serika Downloader - Coolify Docker Compose Configuration
+# For use with Coolify's built-in reverse proxy (Traefik)
+# 
+# In Coolify:
+# 1. Create a new "Docker Compose" resource
+# 2. Use this file or paste its contents
+# 3. Set your domain (e.g., serika.lol) in Coolify's UI
+# 4. Coolify will auto-configure Traefik labels
 
 services:
   serika-downloader:
@@ -9,16 +13,10 @@ services:
       context: .
       dockerfile: Dockerfile
     image: serika-downloader:latest
-    container_name: serika-downloader
-    ports:
-      - "3000:3000"
     expose:
       - "3000"
     volumes:
-      # Mount downloads directory to persist/access files
-      - ./downloads:/app/downloads
-      # Optional: Mount tmp for faster downloads (uses host tmp)
-      # - /tmp/serika-downloads:/tmp/serika-downloads
+      - serika-downloads:/app/downloads
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -28,10 +26,8 @@ services:
       - FILE_RETENTION_MS=3600000
       # Performance tuning
       - YTDLP_CONCURRENT_FRAGMENTS=16
-      # Timezone (optional)
       - TZ=UTC
     restart: unless-stopped
-    # Resource limits (adjust based on your system)
     deploy:
       resources:
         limits:
@@ -46,20 +42,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    # Security options
     security_opt:
       - no-new-privileges:true
-    # Pull policy
-    pull_policy: missing
+    # Traefik labels for Coolify (Coolify may auto-add these)
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.serika.loadbalancer.server.port=3000"
+      # HTTP to HTTPS redirect handled by Coolify/Traefik globally
 
-# Optional: Network configuration for multi-container setups
-networks:
-  default:
-    name: serika-network
-    driver: bridge
+volumes:
+  serika-downloads:
+    driver: local
