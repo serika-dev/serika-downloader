@@ -26,6 +26,8 @@ export interface DownloadOptions {
   cookies?: string;
   proxy?: string;
   userAgent?: string;
+  noPlaylist?: boolean;
+  playlistItems?: string; // e.g., "1", "1,3,5", "1-5", "23,45,21"
 }
 
 export interface DownloadProgress {

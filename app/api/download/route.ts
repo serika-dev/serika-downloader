@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
+import { getYtDlpPath } from '@/utils/ytdlp';
 
 export const maxDuration = 3600; // 1 hour timeout
 
@@ -39,8 +40,9 @@ interface SpotifyTrackInfo {
 // Extract Spotify track info using yt-dlp's Spotify extractor (metadata only)
 async function getSpotifyTrackInfo(spotifyUrl: string): Promise<SpotifyTrackInfo | null> {
   try {
+    const ytdlpPath = getYtDlpPath();
     const result = execSync(
-      `yt-dlp --dump-json --skip-download "${spotifyUrl}"`,
+      `"${ytdlpPath}" --dump-json --skip-download "${spotifyUrl}"`,
       { encoding: 'utf-8', timeout: 30000 }
     );
     const info = JSON.parse(result);
@@ -94,6 +96,9 @@ export async function POST(request: NextRequest) {
       sponsorBlock = false,
       // Cookies
       cookies,
+      // Playlist handling
+      noPlaylist = false,
+      playlistItems,
     } = body;
 
     if (!url) {
@@ -167,6 +172,9 @@ export async function POST(request: NextRequest) {
       spotifyMetadata,
       // Cookies path
       cookiesPath,
+      // Playlist handling
+      noPlaylist,
+      playlistItems,
     });
 
     // Log the yt-dlp command for debugging
@@ -244,6 +252,13 @@ function buildYtdlpArgs(options: any): string[] {
 
   // Check if Bilibili - needs different settings
   const isBilibili = isBilibiliUrl(options.url);
+
+  // Playlist handling
+  if (options.noPlaylist) {
+    args.push('--no-playlist');
+  } else if (options.playlistItems) {
+    args.push('--playlist-items', options.playlistItems);
+  }
 
   // Performance optimizations (only for actual downloads)
   // Bilibili needs lower concurrency to avoid rate limiting
@@ -462,7 +477,8 @@ function processDownload(
   mode: 'video' | 'audio' | 'thumbnail' | 'subtitles',
   spotifyMetadata?: SpotifyTrackInfo | null
 ) {
-  const ytdlp = spawn('yt-dlp', args);
+  const ytdlpPath = getYtDlpPath();
+  const ytdlp = spawn(ytdlpPath, args);
   let fullOutput = '';
 
   // Initialize progress tracking with mode

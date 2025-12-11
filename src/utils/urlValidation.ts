@@ -2,6 +2,7 @@
 type Platform = {
   name: string;
   patterns: RegExp[];
+  playlistPatterns?: RegExp[];
   icon: string;
   warning?: string;
 };
@@ -18,6 +19,11 @@ export const SUPPORTED_PLATFORMS: Platform[] = [
       /^(https?:\/\/)?(www\.)?youtube\.com\/embed\/[\w-]+/,
       /^(https?:\/\/)?(music\.)?youtube\.com\/watch\?v=[\w-]+/,
     ],
+    playlistPatterns: [
+      /^(https?:\/\/)?(www\.)?youtube\.com\/playlist\?list=[\w-]+/,
+      /[&?]list=[\w-]+/,
+      /^(https?:\/\/)?(music\.)?youtube\.com\/playlist\?list=[\w-]+/,
+    ],
     icon: '🎬',
   },
   {
@@ -27,6 +33,9 @@ export const SUPPORTED_PLATFORMS: Platform[] = [
       /^(https?:\/\/)?(www\.)?soundcloud\.com\/[\w-]+\/sets\/[\w-]+/,
       /^(https?:\/\/)?(on\.)?soundcloud\.com\/[\w-]+/,
       /^(https?:\/\/)?api(-v2)?\.soundcloud\.com\/tracks\/\d+/,
+    ],
+    playlistPatterns: [
+      /^(https?:\/\/)?(www\.)?soundcloud\.com\/[\w-]+\/sets\/[\w-]+/,
     ],
     icon: '🎵',
   },
@@ -97,8 +106,12 @@ export const SUPPORTED_PLATFORMS: Platform[] = [
       /^(https?:\/\/)?(www\.)?bilibili\.com\/video\/[\w]+/,
       /^(https?:\/\/)?(www\.)?b23\.tv\/[\w]+/,
     ],
-    icon: '⚠️',
-    warning: '⚠️ Bilibili support is experimental. This platform requires authentication cookies and may be unreliable. Consider uploading a cookies file in the Advanced tab for better results.',
+    playlistPatterns: [
+      /^(https?:\/\/)?(www\.)?bilibili\.com\/medialist\/play\//,
+      /^(https?:\/\/)?(www\.)?bilibili\.com\/bangumi\/play\//,
+    ],
+    icon: '🎬',
+    warning: '⚠️ Bilibili requires cookies for best results. Upload your cookies file in the Advanced tab to avoid errors.',
   },
   {
     name: 'Reddit',
@@ -115,6 +128,10 @@ export const SUPPORTED_PLATFORMS: Platform[] = [
       /^(https?:\/\/)?(open\.)?spotify\.com\/album\/[\w]+/,
       /^(https?:\/\/)?(open\.)?spotify\.com\/playlist\/[\w]+/,
     ],
+    playlistPatterns: [
+      /^(https?:\/\/)?(open\.)?spotify\.com\/album\/[\w]+/,
+      /^(https?:\/\/)?(open\.)?spotify\.com\/playlist\/[\w]+/,
+    ],
     icon: '🎧',
   },
   {
@@ -126,6 +143,10 @@ export const SUPPORTED_PLATFORMS: Platform[] = [
       /^(https?:\/\/)?(www\.)?nicovideo\.jp\/mylist\/\d+/,
       /^(https?:\/\/)?(live\.)?nicovideo\.jp\/watch\/lv\d+/,
     ],
+    playlistPatterns: [
+      /^(https?:\/\/)?(www\.)?nicovideo\.jp\/user\/\d+\/mylist\/\d+/,
+      /^(https?:\/\/)?(www\.)?nicovideo\.jp\/mylist\/\d+/,
+    ],
     icon: '📺',
   },
 ];
@@ -136,6 +157,7 @@ export type UrlValidationResult = {
   icon?: string;
   error?: string;
   warning?: string;
+  isPlaylist?: boolean;
 };
 
 export function validateUrl(url: string): UrlValidationResult {
@@ -163,11 +185,23 @@ export function validateUrl(url: string): UrlValidationResult {
   for (const platform of SUPPORTED_PLATFORMS) {
     for (const pattern of platform.patterns) {
       if (pattern.test(trimmedUrl)) {
+        // Check if it's a playlist
+        let isPlaylist = false;
+        if (platform.playlistPatterns) {
+          for (const playlistPattern of platform.playlistPatterns) {
+            if (playlistPattern.test(trimmedUrl)) {
+              isPlaylist = true;
+              break;
+            }
+          }
+        }
+        
         return {
           isValid: true,
           platform: platform.name,
           icon: platform.icon,
           warning: platform.warning,
+          isPlaylist,
         };
       }
     }

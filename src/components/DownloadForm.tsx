@@ -56,6 +56,20 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [splitChapters, setSplitChapters] = useState(false);
   const [sponsorBlock, setSponsorBlock] = useState(false);
 
+  // Playlist handling
+  const [playlistChoice, setPlaylistChoice] = useState<'all' | 'first' | null>(null);
+  const [showPlaylistPrompt, setShowPlaylistPrompt] = useState(false);
+
+  // Show playlist prompt when a playlist URL is detected
+  const isPlaylistUrl = urlValidation.isValid && urlValidation.isPlaylist;
+  
+  // Reset playlist choice when URL changes
+  const handleUrlChange = (newUrl: string) => {
+    setUrl(newUrl);
+    setPlaylistChoice(null);
+    setShowPlaylistPrompt(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim() || !urlValidation.isValid) return;
@@ -96,11 +110,15 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
       sponsorBlock,
       customArgs,
       cookies: cookiesData,
+      // Playlist handling: only set noPlaylist if user made a choice from URL-based detection
+      // Leave undefined for API-based detection (Bilibili anthologies) so page.tsx can show its modal
+      noPlaylist: isPlaylistUrl ? (playlistChoice === 'first') : undefined,
     };
 
     onSubmit(options);
     setUrl('');
     setCookiesFile(null); // Reset cookies file after submit
+    setPlaylistChoice(null); // Reset playlist choice after submit
   };
 
   return (
@@ -119,7 +137,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
             <input
               type="text"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => handleUrlChange(e.target.value)}
               placeholder="Paste video URL here..."
               disabled={loading}
               className={`relative w-full px-8 py-5 pr-14 bg-black rounded-xl text-white placeholder-zinc-500 focus:outline-none transition-all text-lg shadow-2xl ${
@@ -197,6 +215,70 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                     ✗ {urlValidation.error || 'URL not supported'}
                   </span>
                 )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Playlist Prompt */}
+          <AnimatePresence>
+            {isPlaylistUrl && playlistChoice === null && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+                className="mt-3"
+              >
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">📋</span>
+                    <div className="flex-1">
+                      <p className="text-purple-300 font-medium mb-3">
+                        We noticed you're trying to download from a {urlValidation.platform} playlist. Would you like to download all items, or just the first one?
+                      </p>
+                      <div className="flex gap-2">
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setPlaylistChoice('all')}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium text-sm transition-colors"
+                        >
+                          📥 Download All
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setPlaylistChoice('first')}
+                          className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-medium text-sm transition-colors"
+                        >
+                          1️⃣ First Only
+                        </motion.button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Playlist Choice Indicator */}
+          <AnimatePresence>
+            {isPlaylistUrl && playlistChoice !== null && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="mt-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPlaylistChoice(null)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 border border-purple-500/30 rounded-lg text-purple-300 text-sm hover:bg-purple-500/30 transition-colors"
+                >
+                  {playlistChoice === 'all' ? '📥 Downloading all items' : '1️⃣ Downloading first item only'}
+                  <span className="text-purple-400 hover:text-purple-200">✕</span>
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
