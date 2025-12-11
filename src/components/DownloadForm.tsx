@@ -22,7 +22,7 @@ type Tab = 'general' | 'advanced' | 'metadata';
 
 export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [url, setUrl] = useState('');
-  const [mode, setMode] = useState<'video' | 'audio' | 'thumbnail' | 'subtitles'>('video');
+  const [mode, setMode] = useState<'video' | 'audio' | 'thumbnail' | 'extra'>('video');
   
   // URL validation
   const urlValidation: UrlValidationResult = useMemo(() => {
@@ -39,6 +39,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [subtitleFormat, setSubtitleFormat] = useState('srt');
   const [subtitleLangs, setSubtitleLangs] = useState('all');
   const [autoSubs, setAutoSubs] = useState(true);
+  const [extraType, setExtraType] = useState<'subtitles' | 'livechat' | 'comments'>('subtitles');
   
   // Advanced
   const [videoCodec, setVideoCodec] = useState('h264');
@@ -93,10 +94,12 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
       thumbnailOnly: mode === 'thumbnail',
       thumbnailFormat: mode === 'thumbnail' ? thumbnailFormat : undefined,
       thumbnailQuality: mode === 'thumbnail' ? thumbnailQuality : undefined,
-      subtitlesOnly: mode === 'subtitles',
-      subtitleFormat: mode === 'subtitles' ? subtitleFormat : undefined,
-      subtitleLangs: mode === 'subtitles' ? subtitleLangs : undefined,
-      autoSubs: mode === 'subtitles' ? autoSubs : undefined,
+      subtitlesOnly: mode === 'extra' && extraType === 'subtitles',
+      subtitleFormat: mode === 'extra' && extraType === 'subtitles' ? subtitleFormat : undefined,
+      subtitleLangs: mode === 'extra' && extraType === 'subtitles' ? subtitleLangs : undefined,
+      autoSubs: mode === 'extra' && extraType === 'subtitles' ? autoSubs : undefined,
+      liveChatOnly: mode === 'extra' && extraType === 'livechat',
+      commentsOnly: mode === 'extra' && extraType === 'comments',
       audioFormat: mode === 'audio' ? audioFormat : undefined,
       videoCodec: mode === 'video' ? videoCodec : undefined,
       audioCodec: mode === 'video' ? audioCodec : undefined,
@@ -327,16 +330,16 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
           </motion.button>
           <motion.button
             type="button"
-            onClick={() => setMode('subtitles')}
+            onClick={() => setMode('extra')}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className={`py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-              mode === 'subtitles'
+              mode === 'extra'
                 ? 'bg-zinc-800 text-white shadow-lg'
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            <motion.span animate={{ y: mode === 'subtitles' ? [0, -5, 0] : 0 }} transition={{ duration: 0.5 }}>💬</motion.span> Subs
+            <motion.span animate={{ y: mode === 'extra' ? [0, -5, 0] : 0 }} transition={{ duration: 0.5 }}>📦</motion.span> Extra
           </motion.button>
         </div>
 
@@ -475,60 +478,150 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                     </>
                   ) : (
                     <>
+                      {/* Extra Type Selector */}
                       <div className="space-y-3">
-                        <label className="text-sm font-medium text-zinc-400">Subtitle Format</label>
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                          {['srt', 'vtt', 'ass', 'ssa', 'lrc', 'json3', 'srv1', 'srv2', 'srv3', 'ttml', 'dfxp', 'sbv'].map((f) => (
-                            <button
-                              key={f}
-                              type="button"
-                              onClick={() => setSubtitleFormat(f)}
-                              className={`px-3 py-2 rounded-lg text-sm border transition-all uppercase ${
-                                subtitleFormat === f
-                                  ? 'bg-purple-500/20 border-purple-500 text-purple-200'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                              }`}
-                            >
-                              {f}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <label className="text-sm font-medium text-zinc-400">Languages</label>
-                        <div className="grid grid-cols-4 gap-3">
-                          {[{id: 'all', name: 'All'}, {id: 'en', name: 'English'}, {id: 'es', name: 'Spanish'}, {id: 'fr', name: 'French'}, {id: 'de', name: 'German'}, {id: 'ja', name: 'Japanese'}, {id: 'ko', name: 'Korean'}, {id: 'zh', name: 'Chinese'}].map((lang) => (
-                            <button
-                              key={lang.id}
-                              type="button"
-                              onClick={() => setSubtitleLangs(lang.id)}
-                              className={`px-3 py-2 rounded-lg text-sm border transition-all ${
-                                subtitleLangs === lang.id
-                                  ? 'bg-purple-500/20 border-purple-500 text-purple-200'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                              }`}
-                            >
-                              {lang.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-zinc-400">Include Auto-Generated Subtitles</label>
-                        <button
-                          type="button"
-                          onClick={() => setAutoSubs(!autoSubs)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            autoSubs ? 'bg-purple-600' : 'bg-zinc-700'
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              autoSubs ? 'translate-x-6' : 'translate-x-1'
+                        <label className="text-sm font-medium text-zinc-400">What to Download</label>
+                        <div className="grid grid-cols-3 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setExtraType('subtitles')}
+                            className={`px-4 py-3 rounded-xl text-sm border transition-all flex flex-col items-center gap-1 ${
+                              extraType === 'subtitles'
+                                ? 'bg-purple-500/20 border-purple-500 text-purple-200'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                             }`}
-                          />
-                        </button>
+                          >
+                            <span className="text-xl">💬</span>
+                            <span className="font-medium">Subtitles</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setExtraType('livechat')}
+                            className={`px-4 py-3 rounded-xl text-sm border transition-all flex flex-col items-center gap-1 ${
+                              extraType === 'livechat'
+                                ? 'bg-purple-500/20 border-purple-500 text-purple-200'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                            }`}
+                          >
+                            <span className="text-xl">🔴</span>
+                            <span className="font-medium">Live Chat</span>
+                            <span className="text-xs opacity-60">YouTube</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setExtraType('comments')}
+                            className={`px-4 py-3 rounded-xl text-sm border transition-all flex flex-col items-center gap-1 ${
+                              extraType === 'comments'
+                                ? 'bg-purple-500/20 border-purple-500 text-purple-200'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                            }`}
+                          >
+                            <span className="text-xl">💭</span>
+                            <span className="font-medium">Comments</span>
+                            <span className="text-xs opacity-60">YouTube</span>
+                          </button>
+                        </div>
                       </div>
+
+                      {/* Subtitles Options */}
+                      {extraType === 'subtitles' && (
+                        <>
+                          <div className="space-y-3">
+                            <label className="text-sm font-medium text-zinc-400">Subtitle Format</label>
+                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                              {['srt', 'vtt', 'ass', 'ssa', 'lrc', 'json3', 'srv1', 'srv2', 'srv3', 'ttml', 'dfxp', 'sbv'].map((f) => (
+                                <button
+                                  key={f}
+                                  type="button"
+                                  onClick={() => setSubtitleFormat(f)}
+                                  className={`px-3 py-2 rounded-lg text-sm border transition-all uppercase ${
+                                    subtitleFormat === f
+                                      ? 'bg-purple-500/20 border-purple-500 text-purple-200'
+                                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                                  }`}
+                                >
+                                  {f}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <label className="text-sm font-medium text-zinc-400">Languages</label>
+                            <div className="grid grid-cols-4 gap-3">
+                              {[{id: 'all', name: 'All'}, {id: 'en', name: 'English'}, {id: 'es', name: 'Spanish'}, {id: 'fr', name: 'French'}, {id: 'de', name: 'German'}, {id: 'ja', name: 'Japanese'}, {id: 'ko', name: 'Korean'}, {id: 'zh', name: 'Chinese'}].map((lang) => (
+                                <button
+                                  key={lang.id}
+                                  type="button"
+                                  onClick={() => setSubtitleLangs(lang.id)}
+                                  className={`px-3 py-2 rounded-lg text-sm border transition-all ${
+                                    subtitleLangs === lang.id
+                                      ? 'bg-purple-500/20 border-purple-500 text-purple-200'
+                                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                                  }`}
+                                >
+                                  {lang.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-zinc-400">Include Auto-Generated Subtitles</label>
+                            <button
+                              type="button"
+                              onClick={() => setAutoSubs(!autoSubs)}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                autoSubs ? 'bg-purple-600' : 'bg-zinc-700'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                  autoSubs ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Live Chat Info */}
+                      {extraType === 'livechat' && (
+                        <div className="space-y-4">
+                          <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+                            <div className="flex items-start gap-3">
+                              <span className="text-2xl">🔴</span>
+                              <div>
+                                <h4 className="text-white font-medium mb-1">Live Chat Replay</h4>
+                                <p className="text-zinc-400 text-sm">
+                                  Downloads the live chat replay as a JSON file. This only works for YouTube videos that had a live chat.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-zinc-500 text-xs">
+                            💡 The file will be saved as <code className="bg-zinc-800 px-1.5 py-0.5 rounded">live_chat.json</code>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Comments Info */}
+                      {extraType === 'comments' && (
+                        <div className="space-y-4">
+                          <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700/50">
+                            <div className="flex items-start gap-3">
+                              <span className="text-2xl">💭</span>
+                              <div>
+                                <h4 className="text-white font-medium mb-1">Video Comments</h4>
+                                <p className="text-zinc-400 text-sm">
+                                  Downloads all comments from the video as a JSON file. This may take a while for videos with many comments.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-zinc-500 text-xs">
+                            💡 The file will be saved as <code className="bg-zinc-800 px-1.5 py-0.5 rounded">comments.json</code>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </motion.div>

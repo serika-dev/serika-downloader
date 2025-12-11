@@ -15,7 +15,7 @@ export const downloadProgress = new Map<string, {
   speed?: string; 
   eta?: string; 
   filename?: string;
-  mode?: 'video' | 'audio' | 'thumbnail' | 'subtitles';
+  mode?: 'video' | 'audio' | 'thumbnail' | 'subtitles' | 'livechat' | 'comments';
   error?: string;
 }>();
 
@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
       subtitleFormat,
       subtitleLangs,
       autoSubs = true,
+      liveChatOnly = false,
+      commentsOnly = false,
       // Embed/metadata options
       subtitles = false,
       embedMetadata = true,
@@ -120,6 +122,8 @@ export async function POST(request: NextRequest) {
     // Determine download mode for tracking
     const downloadMode = thumbnailOnly ? 'thumbnail' : 
                          subtitlesOnly ? 'subtitles' : 
+                         liveChatOnly ? 'livechat' :
+                         commentsOnly ? 'comments' :
                          audioOnly ? 'audio' : 'video';
 
     // Check if this is a Spotify URL - handle specially
@@ -161,6 +165,8 @@ export async function POST(request: NextRequest) {
       subtitleFormat,
       subtitleLangs,
       autoSubs,
+      liveChatOnly,
+      commentsOnly,
       // Embed/metadata options
       subtitles,
       embedMetadata,
@@ -245,6 +251,25 @@ function buildYtdlpArgs(options: any): string[] {
       args.push('--convert-subs', options.subtitleFormat);
     }
     // Don't fail if some subtitles fail to download
+    args.push('--ignore-errors');
+    args.push(options.url);
+    return args;
+  }
+
+  // Live chat mode - handle early and return (YouTube only)
+  if (options.liveChatOnly) {
+    args.push('--skip-download');
+    args.push('--write-subs');
+    args.push('--sub-langs', 'live_chat');
+    args.push('--ignore-errors');
+    args.push(options.url);
+    return args;
+  }
+
+  // Comments mode - handle early and return (YouTube only)
+  if (options.commentsOnly) {
+    args.push('--skip-download');
+    args.push('--write-comments');
     args.push('--ignore-errors');
     args.push(options.url);
     return args;
@@ -470,11 +495,13 @@ async function embedSpotifyArtwork(outputDir: string, spotifyMetadata: SpotifyTr
   }
 }
 
+type DownloadMode = 'video' | 'audio' | 'thumbnail' | 'subtitles' | 'livechat' | 'comments';
+
 function processDownload(
   downloadId: string, 
   args: string[], 
   outputDir: string, 
-  mode: 'video' | 'audio' | 'thumbnail' | 'subtitles',
+  mode: DownloadMode,
   spotifyMetadata?: SpotifyTrackInfo | null
 ) {
   const ytdlpPath = getYtDlpPath();

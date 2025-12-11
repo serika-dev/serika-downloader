@@ -16,6 +16,8 @@ export interface DownloadOptions {
   subtitleFormat?: string;
   subtitleLangs?: string;
   autoSubs?: boolean;
+  liveChatOnly?: boolean;
+  commentsOnly?: boolean;
   subtitles: boolean;
   embedMetadata: boolean;
   embedThumbnail: boolean;
