@@ -309,17 +309,30 @@ function buildYtdlpArgs(options: any): string[] {
     // CRITICAL: Referer header is mandatory
     args.push('--referer', 'https://www.bilibili.com/');
     
-    // Modern Chrome User-Agent
+    // Modern Chrome User-Agent - must look like a real browser
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
     args.push('--user-agent', ua);
     
-    // Additional headers that help
+    // Additional headers to look more like a real browser request
     args.push('--add-header', 'Origin:https://www.bilibili.com');
-    args.push('--add-header', 'Accept-Language:en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7');
-    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+    args.push('--add-header', 'Accept-Language:zh-CN,zh;q=0.9,en;q=0.8');
+    args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8');
+    args.push('--add-header', 'Cache-Control:no-cache');
+    args.push('--add-header', 'Pragma:no-cache');
+    args.push('--add-header', 'Sec-Ch-Ua:"Chromium";v="131", "Not_A Brand";v="24"');
+    args.push('--add-header', 'Sec-Ch-Ua-Mobile:?0');
+    args.push('--add-header', 'Sec-Ch-Ua-Platform:"Windows"');
+    args.push('--add-header', 'Sec-Fetch-Dest:document');
+    args.push('--add-header', 'Sec-Fetch-Mode:navigate');
+    args.push('--add-header', 'Sec-Fetch-Site:same-origin');
+    args.push('--add-header', 'Upgrade-Insecure-Requests:1');
     
     // Add delay between requests to avoid rate limiting
     args.push('--sleep-requests', '1');
+    
+    // Retry on errors
+    args.push('--retries', '3');
+    args.push('--retry-sleep', '3');
     
     // Don't use external downloader for Bilibili - aria2c causes issues
   } else {

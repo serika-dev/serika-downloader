@@ -35,6 +35,13 @@ function getPlaylistInfo(url: string, cookiesPath?: string): Promise<{isPlaylist
       const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
       args.push('--user-agent', ua);
       args.push('--add-header', 'Origin:https://www.bilibili.com');
+      args.push('--add-header', 'Accept-Language:zh-CN,zh;q=0.9,en;q=0.8');
+      args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8');
+      args.push('--add-header', 'Sec-Ch-Ua:"Chromium";v="131", "Not_A Brand";v="24"');
+      args.push('--add-header', 'Sec-Ch-Ua-Mobile:?0');
+      args.push('--add-header', 'Sec-Ch-Ua-Platform:"Windows"');
+      args.push('--retries', '3');
+      args.push('--retry-sleep', '3');
     }
 
     args.push(url);
@@ -164,8 +171,20 @@ export async function POST(request: NextRequest) {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
     
+    // Provide better error messages for specific cases
+    let errorMessage = error.message || 'Failed to fetch video information';
+    
+    // Bilibili-specific error handling
+    if (errorMessage.includes('412') && errorMessage.includes('BiliBili')) {
+      errorMessage = 'Bilibili blocked the request (HTTP 412). This usually happens when:\n' +
+        '1. Cookies are missing or invalid - please upload fresh cookies from bilibili.com\n' +
+        '2. The server IP is blocked by Bilibili - try again later\n' +
+        '3. The cookies are from a different region than the server\n\n' +
+        'Tip: Export cookies using a browser extension like "Get cookies.txt LOCALLY" and upload them in the Advanced tab.';
+    }
+    
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch video information' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
@@ -190,22 +209,36 @@ function getVideoInfo(url: string, cookiesPath?: string): Promise<any> {
       if (isBilibiliUrl(url)) {
         // Bilibili REQUIRES cookies with buvid3 to avoid 412 errors
         if (!cookiesPath) {
-          console.warn('[Bilibili] WARNING: Bilibili requires cookies to work!');
+          console.warn('[Bilibili] WARNING: Bilibili requires cookies (especially buvid3) to avoid 412 errors!');
         }
         
         // CRITICAL: Referer header is mandatory
         args.push('--referer', 'https://www.bilibili.com/');
         
-        // Modern Chrome User-Agent
+        // Modern Chrome User-Agent - must look like a real browser
         const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
         args.push('--user-agent', ua);
         
-        // Additional headers
+        // Additional headers to look more like a real browser request
         args.push('--add-header', 'Origin:https://www.bilibili.com');
-        args.push('--add-header', 'Accept-Language:en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7');
+        args.push('--add-header', 'Accept-Language:zh-CN,zh;q=0.9,en;q=0.8');
+        args.push('--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8');
+        args.push('--add-header', 'Cache-Control:no-cache');
+        args.push('--add-header', 'Pragma:no-cache');
+        args.push('--add-header', 'Sec-Ch-Ua:"Chromium";v="131", "Not_A Brand";v="24"');
+        args.push('--add-header', 'Sec-Ch-Ua-Mobile:?0');
+        args.push('--add-header', 'Sec-Ch-Ua-Platform:"Windows"');
+        args.push('--add-header', 'Sec-Fetch-Dest:document');
+        args.push('--add-header', 'Sec-Fetch-Mode:navigate');
+        args.push('--add-header', 'Sec-Fetch-Site:same-origin');
+        args.push('--add-header', 'Upgrade-Insecure-Requests:1');
         
         // Add delay to avoid rate limiting
         args.push('--sleep-requests', '1');
+        
+        // Retry on errors
+        args.push('--retries', '3');
+        args.push('--retry-sleep', '3');
       }
 
       args.push(url);
