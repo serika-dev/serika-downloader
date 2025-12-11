@@ -156,6 +156,11 @@ export default function Home() {
     if (url.includes('soundcloud.com')) return 'SoundCloud';
     if (url.includes('spotify.com')) return 'Spotify';
     if (url.includes('nicovideo.jp') || url.includes('nico.ms')) return 'Niconico';
+    if (url.includes('odysee.com')) return 'Odysee';
+    if (url.includes('vimeo.com')) return 'Vimeo';
+    if (url.includes('dailymotion.com') || url.includes('dai.ly')) return 'Dailymotion';
+    // Check for direct media files
+    if (/\.(mp4|webm|mkv|avi|mov|mp3|m4a|wav|flac|ogg|m3u8)(\?|$)/i.test(url)) return 'Direct Media';
     return 'this platform';
   };
 

@@ -149,6 +149,26 @@ export const SUPPORTED_PLATFORMS: Platform[] = [
     ],
     icon: '📺',
   },
+  {
+    name: 'Odysee',
+    patterns: [
+      /^(https?:\/\/)?(www\.)?odysee\.com\/@[\w-:]+\/[\w-:]+/,
+      /^(https?:\/\/)?(www\.)?odysee\.com\/\$\/[\w]+\/[\w-:]+/,
+    ],
+    icon: '🌊',
+  },
+  {
+    name: 'Direct Media',
+    patterns: [
+      // Video formats
+      /^https?:\/\/.+\.(mp4|webm|mkv|avi|mov|wmv|flv|m4v|3gp|ogv)(\?.*)?$/i,
+      // Audio formats
+      /^https?:\/\/.+\.(mp3|m4a|wav|flac|ogg|opus|aac|wma|aiff)(\?.*)?$/i,
+      // Playlist formats
+      /^https?:\/\/.+\.(m3u8|m3u|pls)(\?.*)?$/i,
+    ],
+    icon: '📁',
+  },
 ];
 
 export type UrlValidationResult = {
