@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/yt--dlp-latest-red?style=flat-square" alt="yt-dlp">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/license-Serika-purple?style=flat-square" alt="License">
 </p>
 
 ---
@@ -123,7 +123,7 @@ Or use the startup scripts:
 start.bat
 ```
 
-📖 **Full Docker Guide:** [DOCKER_SETUP.md](DOCKER_SETUP.md)
+📖 **Full Docker Guide:** [docs/docker.md](docs/docker.md)
 
 ---
 
@@ -138,7 +138,7 @@ Deploy to your own server with [Coolify](https://coolify.io):
 3. Configure domain and SSL
 4. Deploy!
 
-📖 **Full Coolify Guide:** [COOLIFY_SETUP.md](COOLIFY_SETUP.md)
+📖 **Full Coolify Guide:** [docs/coolify.md](docs/coolify.md)
 
 ### Other Platforms
 
@@ -155,9 +155,10 @@ Deploy to your own server with [Coolify](https://coolify.io):
 
 | Document | Description |
 |----------|-------------|
-| [DOCKER_SETUP.md](DOCKER_SETUP.md) | Docker Compose setup guide |
-| [COOLIFY_SETUP.md](COOLIFY_SETUP.md) | Coolify deployment with custom domain |
-| [README_SETUP.md](README_SETUP.md) | Technical architecture & API docs |
+| [docs/docker.md](docs/docker.md) | Docker Compose setup guide |
+| [docs/coolify.md](docs/coolify.md) | Coolify deployment with custom domain |
+| [docs/api.md](docs/api.md) | REST API documentation |
+| [docs/architecture.md](docs/architecture.md) | Technical architecture overview |
 
 ---
 
@@ -198,7 +199,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Serika License** - free to use with attribution to [The Serika Company](https://github.com/serika-dev). See the [LICENSE](LICENSE) file for details.
 
 ---
 
