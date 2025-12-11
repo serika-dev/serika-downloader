@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="public/serika.png" alt="Serika Downloader" width="200" height="200">
+  <img src="public/logo.svg" alt="Serika Downloader" width="200" height="200">
 </p>
-
-<h1 align="center">Serika Downloader</h1>
 
 <p align="center">
   <strong>A beautiful, modern video downloader powered by yt-dlp</strong>
