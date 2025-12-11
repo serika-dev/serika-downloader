@@ -16,13 +16,18 @@ function isBilibiliUrl(url: string): boolean {
 }
 
 // Get playlist info using --flat-playlist (much faster than full extraction)
-function getPlaylistInfo(url: string, cookiesPath?: string): Promise<{isPlaylist: boolean; playlistCount: number; playlistTitle?: string}> {
+function getPlaylistInfo(url: string, cookiesPath?: string, proxy?: string): Promise<{isPlaylist: boolean; playlistCount: number; playlistTitle?: string}> {
   return new Promise((resolve, reject) => {
     const args = [
       '--dump-json',
       '--flat-playlist',  // Only get playlist metadata, not full video info
       '--skip-download',
     ];
+
+    // Apply proxy if provided
+    if (proxy) {
+      args.push('--proxy', proxy);
+    }
 
     // Apply cookies if provided
     if (cookiesPath) {
@@ -116,7 +121,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { url, cookies } = body;
+    const { url, cookies, proxy } = body;
 
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
@@ -133,7 +138,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get video information using yt-dlp
-    const info = await getVideoInfo(url, cookiesPath);
+    const info = await getVideoInfo(url, cookiesPath, proxy);
     
     console.log('[Info] isBilibiliUrl:', isBilibiliUrl(url), 'url:', url);
     console.log('[Info] info.isPlaylist before check:', info.isPlaylist);
@@ -143,7 +148,7 @@ export async function POST(request: NextRequest) {
     if (isBilibiliUrl(url)) {
       console.log('[Info] Checking for Bilibili playlist/anthology...');
       try {
-        const playlistInfo = await getPlaylistInfo(url, cookiesPath);
+        const playlistInfo = await getPlaylistInfo(url, cookiesPath, proxy);
         console.log('[Info] Playlist check result:', JSON.stringify(playlistInfo));
         if (playlistInfo.isPlaylist) {
           info.isPlaylist = true;
@@ -190,7 +195,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getVideoInfo(url: string, cookiesPath?: string): Promise<any> {
+function getVideoInfo(url: string, cookiesPath?: string, proxy?: string): Promise<any> {
   return new Promise((resolve, reject) => {
     // Try local yt-dlp first
     const tryLocalYtdlp = () => {
@@ -199,6 +204,12 @@ function getVideoInfo(url: string, cookiesPath?: string): Promise<any> {
         '--no-playlist',
         '--skip-download',
       ];
+
+      // Apply proxy if provided
+      if (proxy) {
+        args.push('--proxy', proxy);
+        console.log('[Info] Using proxy:', proxy);
+      }
 
       // Apply cookies if provided
       if (cookiesPath) {

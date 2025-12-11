@@ -98,6 +98,8 @@ export async function POST(request: NextRequest) {
       sponsorBlock = false,
       // Cookies
       cookies,
+      // Proxy
+      proxy,
       // Playlist handling
       noPlaylist = false,
       playlistItems,
@@ -178,6 +180,8 @@ export async function POST(request: NextRequest) {
       spotifyMetadata,
       // Cookies path
       cookiesPath,
+      // Proxy
+      proxy,
       // Playlist handling
       noPlaylist,
       playlistItems,
@@ -219,6 +223,12 @@ function buildYtdlpArgs(options: any): string[] {
     args.push('-o', path.join(options.outputDir, `${safeArtist} - ${safeTitle}.%(ext)s`));
   } else {
     args.push('-o', path.join(options.outputDir, '%(title)s.%(ext)s'));
+  }
+
+  // Apply proxy if provided
+  if (options.proxy) {
+    args.push('--proxy', options.proxy);
+    console.log('[yt-dlp] Using proxy:', options.proxy);
   }
 
   // Thumbnail-only mode - handle early and return

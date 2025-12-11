@@ -47,6 +47,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
   const [fps, setFps] = useState('source');
   const [customArgs, setCustomArgs] = useState('');
   const [cookiesFile, setCookiesFile] = useState<File | null>(null);
+  const [proxy, setProxy] = useState('');
   
   // Metadata
   const [downloadThumbnail, setDownloadThumbnail] = useState(true);
@@ -113,6 +114,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
       sponsorBlock,
       customArgs,
       cookies: cookiesData,
+      proxy: proxy.trim() || undefined,
       // Playlist handling: only set noPlaylist if user made a choice from URL-based detection
       // Leave undefined for API-based detection (Bilibili anthologies) so page.tsx can show its modal
       noPlaylist: isPlaylistUrl ? (playlistChoice === 'first') : undefined,
@@ -714,6 +716,20 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                     </div>
                     <p className="text-xs text-zinc-500">
                       Required for some platforms like Bilibili. Export cookies from your browser using an extension like "Get cookies.txt".
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium text-zinc-400">Proxy (Optional)</label>
+                    <input
+                      type="text"
+                      value={proxy}
+                      onChange={(e) => setProxy(e.target.value)}
+                      placeholder="socks5://127.0.0.1:1080 or http://user:pass@proxy:8080"
+                      className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                    />
+                    <p className="text-xs text-zinc-500">
+                      Use a proxy for geo-restricted content or to bypass rate limits. Supports HTTP, HTTPS, SOCKS4, SOCKS5.
                     </p>
                   </div>
 

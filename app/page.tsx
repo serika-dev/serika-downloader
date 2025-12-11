@@ -28,11 +28,11 @@ export default function Home() {
     const tempId = uuidv4(); // Temporary ID until server responds
 
     try {
-      // First, get video info (pass cookies for platforms that need them)
+      // First, get video info (pass cookies and proxy for platforms that need them)
       const infoResponse = await fetch('/api/info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: options.url, cookies: options.cookies }),
+        body: JSON.stringify({ url: options.url, cookies: options.cookies, proxy: options.proxy }),
       });
 
       if (!infoResponse.ok) {
