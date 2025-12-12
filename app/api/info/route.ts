@@ -5,15 +5,11 @@ import fs from 'fs/promises';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import { getYtDlpPath } from '@/utils/ytdlp';
+import { getDefaultCookiesPath, isBilibiliUrl } from '@/utils/defaultCookies';
 
 export const maxDuration = 300; // 5 minutes timeout for serverless
 
-// Bilibili URL patterns (need custom headers to avoid 412)
-const BILIBILI_REGEX = /^(https?:\/\/)?(www\.)?(bilibili\.com|b23\.tv)\//;
-
-function isBilibiliUrl(url: string): boolean {
-  return BILIBILI_REGEX.test(url);
-}
+// Note: Bilibili/Instagram URL detection + default cookie fetching lives in src/utils/defaultCookies.ts
 
 // Get playlist info using --flat-playlist (much faster than full extraction)
 function getPlaylistInfo(url: string, cookiesPath?: string, proxy?: string): Promise<{isPlaylist: boolean; playlistCount: number; playlistTitle?: string}> {
@@ -135,6 +131,14 @@ export async function POST(request: NextRequest) {
       cookiesPath = path.join(tempDir, 'cookies.txt');
       await fs.writeFile(cookiesPath, cookies, 'utf-8');
       console.log('[Info] Cookies file saved for this request');
+    } else {
+      // Server-configured default cookies (only applied when user does NOT upload cookies)
+      const { isInstagramUrl } = await import('@/utils/defaultCookies');
+      if (isInstagramUrl(url)) {
+        cookiesPath = await getDefaultCookiesPath('instagram');
+      } else if (isBilibiliUrl(url)) {
+        cookiesPath = await getDefaultCookiesPath('bilibili');
+      }
     }
 
     // Get video information using yt-dlp
@@ -179,13 +183,44 @@ export async function POST(request: NextRequest) {
     // Provide better error messages for specific cases
     let errorMessage = error.message || 'Failed to fetch video information';
     
+    // Instagram-specific error handling
+    if (errorMessage.includes('Instagram') && 
+        (errorMessage.includes('login required') || errorMessage.includes('rate-limit') || errorMessage.includes('csrf token'))) {
+      errorMessage = '⚠️ Instagram download failed - this may be due to rate limiting or authentication requirements.\n\n' +
+        'You can try:\n' +
+        '1. Wait a few minutes and try again\n' +
+        '2. Or upload cookies: Export your Instagram cookies using "Get cookies.txt LOCALLY" browser extension, then upload in the Advanced tab\n\n' +
+        'Note: Make sure you\'re logged into Instagram before exporting cookies.';
+    }
+    // Twitter/X-specific error handling
+    else if ((errorMessage.includes('Twitter') || errorMessage.includes('twitter.com') || errorMessage.includes('x.com')) && 
+             (errorMessage.includes('login') || errorMessage.includes('rate') || errorMessage.includes('protected'))) {
+      errorMessage = '⚠️ Twitter/X download failed - this may be due to rate limiting or authentication requirements.\n\n' +
+        'You can try:\n' +
+        '1. Wait a few minutes and try again\n' +
+        '2. Or upload cookies: Export your Twitter/X cookies using "Get cookies.txt LOCALLY" browser extension, then upload in the Advanced tab';
+    }
     // Bilibili-specific error handling
-    if (errorMessage.includes('412') && errorMessage.includes('BiliBili')) {
-      errorMessage = 'Bilibili blocked the request (HTTP 412). This usually happens when:\n' +
-        '1. Cookies are missing or invalid - please upload fresh cookies from bilibili.com\n' +
-        '2. The server IP is blocked by Bilibili - try again later\n' +
-        '3. The cookies are from a different region than the server\n\n' +
-        'Tip: Export cookies using a browser extension like "Get cookies.txt LOCALLY" and upload them in the Advanced tab.';
+    else if (errorMessage.includes('412') && errorMessage.includes('BiliBili')) {
+      errorMessage = '⚠️ Bilibili blocked the request (HTTP 412) - likely due to rate limiting.\n\n' +
+        'You can try:\n' +
+        '1. Wait a few minutes and try again\n' +
+        '2. Use a proxy (add in Advanced tab)\n' +
+        '3. Upload fresh cookies from bilibili.com\n\n' +
+        'Tip: Export cookies using "Get cookies.txt LOCALLY" browser extension.';
+    }
+    // Age-restricted content
+    else if (errorMessage.includes('age') || errorMessage.includes('Sign in to confirm your age')) {
+      errorMessage = '🔞 This content is age-restricted and requires authentication.\n\n' +
+        'To download:\n' +
+        '1. Log into the website in your browser\n' +
+        '2. Export cookies using "Get cookies.txt LOCALLY" extension\n' +
+        '3. Upload the cookies file in the Advanced tab';
+    }
+    // Private/unavailable content
+    else if (errorMessage.includes('Private video') || errorMessage.includes('not available')) {
+      errorMessage = '🔒 This content is private or unavailable.\n\n' +
+        'If you have access, try uploading cookies from your logged-in browser session.';
     }
     
     return NextResponse.json(

@@ -5,6 +5,7 @@ import os from 'os';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
 import { getYtDlpPath } from '@/utils/ytdlp';
+import { getDefaultCookiesPath, isBilibiliUrl, isInstagramUrl } from '@/utils/defaultCookies';
 
 export const maxDuration = 3600; // 1 hour timeout
 
@@ -24,8 +25,7 @@ const SPOTIFY_TRACK_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/track\/([a-zA
 const SPOTIFY_ALBUM_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/album\/([a-zA-Z0-9]+)/;
 const SPOTIFY_PLAYLIST_REGEX = /^(https?:\/\/)?(open\.)?spotify\.com\/playlist\/([a-zA-Z0-9]+)/;
 
-// Bilibili URL patterns (need custom headers to avoid 412)
-const BILIBILI_REGEX = /^(https?:\/\/)?(www\.)?(bilibili\.com|b23\.tv)\//;
+// Note: Bilibili/Instagram URL detection lives in src/utils/defaultCookies.ts
 
 interface SpotifyTrackInfo {
   title: string;
@@ -119,6 +119,12 @@ export async function POST(request: NextRequest) {
       cookiesPath = path.join(outputDir, 'cookies.txt');
       await fs.writeFile(cookiesPath, cookies, 'utf-8');
       console.log(`[${downloadId}] Cookies file saved for this request`);
+    } else if (isInstagramUrl(url)) {
+      // Instagram-only default cookies fallback (server-configured)
+      cookiesPath = await getDefaultCookiesPath('instagram');
+    } else if (isBilibiliUrl(url)) {
+      // Bilibili-only default cookies fallback (server-configured)
+      cookiesPath = await getDefaultCookiesPath('bilibili');
     }
 
     // Determine download mode for tracking
@@ -209,9 +215,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function isBilibiliUrl(url: string): boolean {
-  return BILIBILI_REGEX.test(url);
-}
+// isBilibiliUrl/isInstagramUrl imported from utils
 
 function buildYtdlpArgs(options: any): string[] {
   const args: string[] = [];
