@@ -328,70 +328,44 @@ async function downloadFileWithProgress(
   console.log('[downloadFile] Starting download:', { downloadId, filename });
   
   try {
-    const response = await fetch(`/api/file?id=${downloadId}`);
+    // First, do a HEAD request to check if file exists and get info
+    const checkResponse = await fetch(`/api/file?id=${downloadId}`, { method: 'HEAD' });
     
-    console.log('[downloadFile] Response status:', response.status);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('[downloadFile] Error response:', errorData);
-      throw new Error(errorData.error || 'Failed to download file');
+    if (!checkResponse.ok) {
+      // If HEAD fails, try GET to get error message
+      const errorResponse = await fetch(`/api/file?id=${downloadId}`);
+      const errorData = await errorResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || 'File not found or download expired');
     }
 
-    const contentDisposition = response.headers.get('Content-Disposition');
-    const contentLength = response.headers.get('Content-Length');
-    const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+    // File exists - use direct browser download (handles large files properly)
+    // This streams directly to disk without loading into memory
+    onProgress(50); // Show some progress
     
-    let actualFilename = filename || 'download';
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (filenameMatch && filenameMatch[1]) {
-        actualFilename = decodeURIComponent(filenameMatch[1].replace(/['"]/g, ''));
-      }
-    }
-
-    // Stream the response to track progress
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Unable to read response body');
-    }
-
-    const chunks: BlobPart[] = [];
-    let receivedLength = 0;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      
-      if (done) break;
-      
-      chunks.push(value);
-      receivedLength += value.length;
-      
-      // Calculate and report progress
-      if (totalSize > 0) {
-        const progress = Math.round((receivedLength / totalSize) * 100);
-        onProgress(progress);
-      } else {
-        // If no content-length, show indeterminate progress
-        onProgress(Math.min(99, Math.round(receivedLength / 1024 / 1024))); // MB as fake %
-      }
-    }
-
-    // Combine chunks into a single blob
-    const blob = new Blob(chunks);
-    console.log('[downloadFile] Blob size:', blob.size);
+    const downloadUrl = `/api/file?id=${downloadId}`;
     
-    onProgress(100);
+    // Create a hidden iframe for download (better for large files than anchor click)
+    // This prevents the page from potentially hanging on very large files
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = downloadUrl;
+    document.body.appendChild(iframe);
     
-    const url = window.URL.createObjectURL(blob);
+    // Also create anchor as backup (some browsers prefer this)
     const a = document.createElement('a');
-    a.href = url;
-    a.download = actualFilename;
+    a.href = downloadUrl;
+    a.download = filename || 'download';
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
     
+    // Cleanup after a delay
+    setTimeout(() => {
+      document.body.removeChild(a);
+      document.body.removeChild(iframe);
+    }, 5000);
+    
+    onProgress(100);
     console.log('[downloadFile] Download triggered successfully');
   } catch (error: any) {
     console.error('[downloadFile] Download error:', error);

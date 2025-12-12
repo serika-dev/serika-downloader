@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       baseFilename = path.basename(files[0], path.extname(files[0]));
     }
 
-    // If single file, serve it directly
+    // If single file, serve it directly with range request support
     if (filesToServe.length === 1) {
       const singleFile = filesToServe[0];
       const filePath = path.join(downloadDir, singleFile);
@@ -133,6 +133,32 @@ export async function GET(request: NextRequest) {
       const fileSize = fileStats.size;
       const mimeType = getMimeType(singleFile);
 
+      // Check for range request (important for large file resumable downloads)
+      const rangeHeader = request.headers.get('range');
+      
+      if (rangeHeader) {
+        // Parse range header
+        const parts = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+        
+        const stream = fs.createReadStream(filePath, { start, end });
+        
+        return new NextResponse(stream as any, {
+          status: 206, // Partial Content
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Disposition': `attachment; filename="${encodeURIComponent(singleFile)}"`,
+            'Content-Length': chunkSize.toString(),
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'no-cache',
+          },
+        });
+      }
+
+      // Full file download
       const stream = fs.createReadStream(filePath);
       
       return new NextResponse(stream as any, {
@@ -141,8 +167,8 @@ export async function GET(request: NextRequest) {
           'Content-Type': mimeType,
           'Content-Disposition': `attachment; filename="${encodeURIComponent(singleFile)}"`,
           'Content-Length': fileSize.toString(),
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'no-cache',
           'Expires': '0',
         },
       });
@@ -192,5 +218,44 @@ export async function GET(request: NextRequest) {
       { error: error.message || 'Failed to download file' },
       { status: 500 }
     );
+  }
+}
+
+// HEAD request to check if file exists (used by client before download)
+export async function HEAD(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const downloadId = searchParams.get('id');
+
+    if (!downloadId) {
+      return new NextResponse(null, { status: 400 });
+    }
+
+    const downloadDir = path.join(os.tmpdir(), 'serika-downloads', downloadId);
+
+    try {
+      await stat(downloadDir);
+    } catch {
+      return new NextResponse(null, { status: 404 });
+    }
+
+    const allFiles = await readdir(downloadDir);
+    const files = allFiles.filter(f => {
+      const category = getFileCategory(f);
+      return category !== 'partial';
+    });
+
+    if (files.length === 0) {
+      return new NextResponse(null, { status: 404 });
+    }
+
+    return new NextResponse(null, { 
+      status: 200,
+      headers: {
+        'Accept-Ranges': 'bytes',
+      }
+    });
+  } catch {
+    return new NextResponse(null, { status: 500 });
   }
 }
